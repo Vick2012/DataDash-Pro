@@ -30,6 +30,7 @@ polars = { version = "0.53", default-features = false, features = [
 ] }
 calamine = "0.26"
 tokio = { version = "1", features = ["sync", "fs"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 chrono = "0.4"
 edit-xlsx = "0.4"
 printpdf = "0.7"

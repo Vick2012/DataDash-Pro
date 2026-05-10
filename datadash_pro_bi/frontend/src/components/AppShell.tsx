@@ -15,8 +15,6 @@ export default function AppShell({
   sidebarPanel,
   variant = 'welcome',
 }: AppShellProps) {
-  const navItems = ['Overview', 'Production', 'Analytics', 'Registry', 'Settings'];
-
   return (
     <div className="app-shell">
       <aside className="app-shell__sidebar" aria-label="Navegación principal">
@@ -29,21 +27,6 @@ export default function AppShell({
             <span className="app-shell__brand-tag">Institutional Monitor</span>
           </div>
         </div>
-        <nav className="app-shell__nav" aria-label="Secciones">
-          <ul className="app-shell__nav-list">
-            {navItems.map((item, index) => (
-              <li key={item}>
-                <button
-                  type="button"
-                  className={`app-shell__nav-link${index === 0 ? ' app-shell__nav-link--active' : ''}`}
-                  aria-current={index === 0 ? 'page' : undefined}
-                >
-                  <span>{item}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </nav>
         {sidebarPanel ? <div className="app-shell__sidebar-panel-slot">{sidebarPanel}</div> : null}
         <div className="app-shell__sidebar-meta">
           <span className="app-shell__badge">Procesamiento local</span>

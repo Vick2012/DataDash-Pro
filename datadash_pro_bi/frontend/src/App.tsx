@@ -7,6 +7,7 @@ import CentroSelector from './components/CentroSelector';
 import ProcessingOverlay from './components/ProcessingOverlay';
 import type { MetricsResponse } from './types';
 import { isTauriRuntime } from './tauriRuntime';
+import ChatPanel from './components/ChatPanel';
 
 type Theme = 'dark' | 'light';
 
@@ -132,8 +133,11 @@ export default function App() {
       <>
         <CentroSelector data={data} value={centroSel} onChange={setCentroSel} />
         <BoletinPanel productionPath={productionPath} />
+        <ChatPanel data={data} centroSeleccionado={centroSel} />
       </>
-    ) : null;
+    ) : (
+      <ChatPanel data={null} />
+    );
 
   const showBrowserDevHint = import.meta.env.DEV && !isTauriRuntime();
 

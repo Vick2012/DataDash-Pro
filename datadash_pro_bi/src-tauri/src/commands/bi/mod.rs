@@ -1,3 +1,7 @@
+mod llm;
+
+pub use llm::{check_llm_availability, list_llm_models, query_llm};
+
 mod boletin;
 mod excel;
 mod metrics;
