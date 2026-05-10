@@ -1,0 +1,12 @@
+{
+  "name": "datadashpro",
+  "private": true,
+  "scripts": {
+    "dev": "cd datadash_pro_bi && npm run tauri:dev",
+    "tauri": "cd datadash_pro_bi && npm run tauri:dev",
+    "tauri:dev": "cd datadash_pro_bi && npm run tauri:dev",
+    "tauri:dev:win": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\tauri-dev-windows.ps1",
+    "tauri:build": "cd datadash_pro_bi && npm run tauri:build",
+    "tauri:build:portable": "cd datadash_pro_bi && npm run tauri:build:portable"
+  }
+}

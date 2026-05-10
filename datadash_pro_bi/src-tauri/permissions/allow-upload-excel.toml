@@ -1,0 +1,11 @@
+[[permission]]
+identifier = "allow-upload-excel"
+description = "Permite invocar el comando upload_excel para procesar archivos Excel."
+commands.allow = [
+  "upload_excel",
+  "upload_excel_bytes",
+  "load_std_por_area",
+  "list_boletin_filters_cmd",
+  "generate_boletin_cmd",
+  "generate_boletin_pdf_cmd",
+]
