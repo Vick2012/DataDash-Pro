@@ -9,6 +9,11 @@ use printpdf::{
     BuiltinFont, Color, Greyscale, IndirectFontRef, Mm, PdfDocument, PdfLayerReference, Rect, Rgb,
     path::{PaintMode, WindingOrder},
 };
+use printpdf::{Image as PdfImage, ImageTransform};
+use image::codecs::jpeg::JpegDecoder;
+use image::ImageDecoder;
+use std::io::Cursor;
+
 use serde::Serialize;
 use std::collections::HashSet;
 use std::fs::File;
@@ -792,15 +797,39 @@ pub fn generate_boletin_pdf(
     let black = Color::Rgb(Rgb::new(0.0, 0.0, 0.0, None));
     let white_c = Color::Rgb(white.clone());
 
+// ── Logo INC ─────────────────────────────────────────────────────────
+    {
+        const LOGO_BYTES: &[u8] = include_bytes!("logo-inc.jpg");
+        const LOGO_W_MM: f32 = 28.0;
+        const LOGO_H_MM: f32 = 18.0;
+        if let Ok(mut decoder) = JpegDecoder::new(Cursor::new(LOGO_BYTES as &[u8])) {
+            let (px_w, _) = decoder.dimensions();
+            let dpi = px_w as f32 * 25.4 / LOGO_W_MM;
+            if let Ok(img) = PdfImage::try_from(decoder) {
+                img.add_to_layer(
+                    layer.clone(),
+                    ImageTransform {
+                        translate_x: Some(Mm(M)),
+                        translate_y: Some(Mm(PH - 10.0 - LOGO_H_MM)),
+                        dpi: Some(dpi),
+                        ..Default::default()
+                    },
+                );
+            }
+        }
+    }
     let mut y = 9.0_f32;
-    let val_w = table_w - LABEL_COL_W;
+
+    const LOGO_AREA_W: f32 = 34.0;
+    let header_left = M + LOGO_AREA_W;
+    let val_w = table_w - LOGO_AREA_W - LABEL_COL_W;
     pdf_boletin_header_line(
         &layer,
         &font,
         PH,
         y,
         HEADER_ROW_H,
-        M,
+        header_left,
         LABEL_COL_W,
         val_w,
         "Periodo:",
@@ -814,7 +843,7 @@ pub fn generate_boletin_pdf(
         PH,
         y,
         HEADER_ROW_H,
-        M,
+        header_left,
         LABEL_COL_W,
         val_w,
         "Funcionario:",
@@ -828,7 +857,7 @@ pub fn generate_boletin_pdf(
         PH,
         y,
         HEADER_ROW_H,
-        M,
+        header_left,
         LABEL_COL_W,
         val_w,
         "Centro de costos:",

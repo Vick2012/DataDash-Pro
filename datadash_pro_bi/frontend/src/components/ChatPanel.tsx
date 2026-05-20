@@ -20,7 +20,7 @@ const SUGERENCIAS = [
   '¿Cuántas órdenes de producción hay?',
   '¿Distribución de tiempo productivo vs improductivo?',
   '¿Qué área tiene más horas registradas?',
-  '¿Cuál es el OOE mensual más alto?',
+  '¿Cuál es el OEE mensual más alto?',
 ];
 
 function buildCtx(data: MetricsResponse | null, centro: string) {

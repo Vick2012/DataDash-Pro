@@ -8,7 +8,7 @@ import EfficiencyTable from './EfficiencyTable';
 import EficienciaMaquinaTable from './EficienciaMaquinaTable';
 import ProductivoChart from './ProductivoChart';
 import UsoMaquinasChart from './UsoMaquinasChart';
-import OOEMonthlyTable from './OOEMonthlyTable';
+import OEEMonthlyTable from './OEEMonthlyTable';
 
 interface Props {
   data: MetricsResponse;
@@ -25,23 +25,57 @@ const defaultResumen = {
   ooe_global: 0,
 };
 
+const IconFile = () => (
+  <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round"
+      d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+  </svg>
+);
+const IconTable = () => (
+  <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+    <path strokeLinecap="round" d="M3 10h18M3 14h18M10 3v18M14 3v18" />
+  </svg>
+);
+const IconRows = () => (
+  <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+    <path strokeLinecap="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+  </svg>
+);
+const IconUpload = () => (
+  <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round"
+      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+  </svg>
+);
+const IconFilter = () => (
+  <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round"
+      d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z" />
+  </svg>
+);
+
 export default function Dashboard({ data, onReset, centroSeleccionado }: Props) {
   const m = activeMetricsForCentro(data, centroSeleccionado);
-  const resumen = m.resumen ?? defaultResumen;
-  const produccionMaquina = m.produccion_maquina ?? [];
-  const horasArea = m.horas_area ?? [];
+  const resumen                = m.resumen               ?? defaultResumen;
+  const produccionMaquina      = m.produccion_maquina    ?? [];
+  const horasArea              = m.horas_area            ?? [];
   const productivoImproductivo = m.productivo_improductivo ?? [];
-  const usoMaquinas = m.uso_maquinas ?? [];
+  const usoMaquinas            = m.uso_maquinas          ?? [];
   const eficienciaFuncionarios = m.eficiencia_funcionarios ?? [];
-  const eficienciaMaquina = m.eficiencia_maquina ?? [];
-  const ooeMensual = m.ooe_mensual ?? [];
-  const filtrado = Boolean(centroSeleccionado.trim());
-  const [metaOoe, setMetaOoe] = useState(85);
-  const [periodoSeleccionado, setPeriodoSeleccionado] = useState('');
-  const [filtroMaquina, setFiltroMaquina] = useState('');
-  const [filtroArea, setFiltroArea] = useState('');
+  const eficienciaMaquina      = m.eficiencia_maquina    ?? [];
+  // ooe_mensual: nombre del campo en el backend Rust — no cambiar
+  const ooeMensual             = m.ooe_mensual           ?? [];
+  const filtrado               = Boolean(centroSeleccionado.trim());
 
-  const periodosDisponibles = useMemo(() => ooeMensual.map((x) => x.periodo), [ooeMensual]);
+  const [metaOee,             setMetaOee]             = useState(85);
+  const [periodoSeleccionado, setPeriodoSeleccionado] = useState('');
+  const [filtroMaquina,       setFiltroMaquina]       = useState('');
+  const [filtroArea,          setFiltroArea]          = useState('');
+
+  const periodosDisponibles = useMemo(
+    () => ooeMensual.map((x) => x.periodo),
+    [ooeMensual],
+  );
 
   useEffect(() => {
     setFiltroMaquina('');
@@ -50,15 +84,7 @@ export default function Dashboard({ data, onReset, centroSeleccionado }: Props) 
 
   const maquinasDisponibles = useMemo(() => {
     const names = new Set<string>();
-    for (const row of produccionMaquina) {
-      const n = row.maquina?.trim();
-      if (n) names.add(row.maquina);
-    }
-    for (const row of usoMaquinas) {
-      const n = row.maquina?.trim();
-      if (n) names.add(row.maquina);
-    }
-    for (const row of eficienciaMaquina) {
+    for (const row of [...produccionMaquina, ...usoMaquinas, ...eficienciaMaquina]) {
       const n = row.maquina?.trim();
       if (n) names.add(row.maquina);
     }
@@ -82,261 +108,286 @@ export default function Dashboard({ data, onReset, centroSeleccionado }: Props) 
     if (filtroArea && !areasDisponibles.includes(filtroArea)) setFiltroArea('');
   }, [filtroArea, areasDisponibles]);
 
-  const produccionMaquinaVista = useMemo(() => {
-    if (!filtroMaquina.trim()) return produccionMaquina;
-    return produccionMaquina.filter((x) => x.maquina === filtroMaquina);
-  }, [produccionMaquina, filtroMaquina]);
-
-  const usoMaquinasVista = useMemo(() => {
-    if (!filtroMaquina.trim()) return usoMaquinas;
-    return usoMaquinas.filter((x) => x.maquina === filtroMaquina);
-  }, [usoMaquinas, filtroMaquina]);
-
-  const eficienciaMaquinaVista = useMemo(() => {
-    if (!filtroMaquina.trim()) return eficienciaMaquina;
-    return eficienciaMaquina.filter((x) => x.maquina === filtroMaquina);
-  }, [eficienciaMaquina, filtroMaquina]);
-
-  const horasAreaVista = useMemo(() => {
-    if (!filtroArea.trim()) return horasArea;
-    return horasArea.filter((x) => x.area === filtroArea);
-  }, [horasArea, filtroArea]);
+  const produccionMaquinaVista = useMemo(
+    () => filtroMaquina.trim() ? produccionMaquina.filter(x => x.maquina === filtroMaquina) : produccionMaquina,
+    [produccionMaquina, filtroMaquina],
+  );
+  const usoMaquinasVista = useMemo(
+    () => filtroMaquina.trim() ? usoMaquinas.filter(x => x.maquina === filtroMaquina) : usoMaquinas,
+    [usoMaquinas, filtroMaquina],
+  );
+  const eficienciaMaquinaVista = useMemo(
+    () => filtroMaquina.trim() ? eficienciaMaquina.filter(x => x.maquina === filtroMaquina) : eficienciaMaquina,
+    [eficienciaMaquina, filtroMaquina],
+  );
+  const horasAreaVista = useMemo(
+    () => filtroArea.trim() ? horasArea.filter(x => x.area === filtroArea) : horasArea,
+    [horasArea, filtroArea],
+  );
 
   const tieneFiltrosGlobales = Boolean(filtroMaquina.trim() || filtroArea.trim());
 
   useEffect(() => {
-    if (periodosDisponibles.length === 0) {
-      setPeriodoSeleccionado('');
-      return;
-    }
-    const ordered = [...periodosDisponibles].sort();
-    const latest = ordered[ordered.length - 1] ?? periodosDisponibles[0];
-    setPeriodoSeleccionado((prev) => (prev && periodosDisponibles.includes(prev) ? prev : latest));
+    if (!periodosDisponibles.length) { setPeriodoSeleccionado(''); return; }
+    const sorted = [...periodosDisponibles].sort();
+    const latest = sorted[sorted.length - 1] ?? periodosDisponibles[0];
+    setPeriodoSeleccionado(prev => (prev && periodosDisponibles.includes(prev) ? prev : latest));
   }, [periodosDisponibles]);
 
+  // ooePeriodo: usa el campo .ooe del backend (no .oee)
   const ooePeriodo = useMemo(
-    () => ooeMensual.find((x) => x.periodo === periodoSeleccionado) ?? null,
+    () => ooeMensual.find(x => x.periodo === periodoSeleccionado) ?? null,
     [ooeMensual, periodoSeleccionado],
   );
 
   const periodLabel = useMemo(() => {
     if (!periodoSeleccionado) return '';
     const [yy, mm] = periodoSeleccionado.split('-');
-    const y = Number(yy);
-    const mNum = Number(mm);
+    const y = Number(yy), mNum = Number(mm);
     if (!Number.isFinite(y) || !Number.isFinite(mNum) || mNum < 1 || mNum > 12) return periodoSeleccionado;
-    const date = new Date(y, mNum - 1, 1);
-    return date.toLocaleDateString('es-CO', { month: 'long', year: 'numeric' });
+    return new Date(y, mNum - 1, 1).toLocaleDateString('es-CO', { month: 'long', year: 'numeric' });
   }, [periodoSeleccionado]);
 
+  // .ooe es el campo del backend Rust — la etiqueta visible dice OEE
   const status = useMemo(() => {
-    const value = ooePeriodo?.ooe ?? 0;
-    const warning = Math.max(0, metaOoe - 10);
-    if (value >= metaOoe) return { text: 'En meta', color: '#22c55e' };
-    if (value >= warning) return { text: 'Riesgo', color: '#f59e0b' };
-    return { text: 'Fuera de meta', color: '#ef4444' };
-  }, [ooePeriodo?.ooe, metaOoe]);
+    const v = ooePeriodo?.ooe ?? 0;
+    if (v >= metaOee)      return { text: 'En meta',       color: '#10b981' };
+    if (v >= metaOee - 10) return { text: 'Riesgo',        color: '#f59e0b' };
+    return                        { text: 'Fuera de meta', color: '#ef4444' };
+  }, [ooePeriodo?.ooe, metaOee]);
 
-  const pageTitle = filtrado ? `Detalle — ${centroSeleccionado}` : 'Resumen de producción';
+  const pageTitle    = filtrado ? `Detalle — ${centroSeleccionado}` : 'Resumen de producción';
   const pageSubtitle = filtrado
     ? 'Métricas calculadas solo con registros del centro seleccionado. Cambie el filtro en la barra lateral para comparar otros equipos.'
     : 'Monitoreo de indicadores clave de rendimiento institucional y eficiencia de la planta en tiempo real.';
 
+  const MetaChip = ({ icon, color, label, value }: {
+    icon: React.ReactNode; color: string; label: string; value: string;
+  }) => (
+    <span style={{
+      display: 'flex', alignItems: 'center', gap: 6,
+      padding: '0.38rem 0.75rem', borderRadius: 999,
+      background: `${color}12`, border: `1px solid ${color}28`,
+      fontSize: '0.8125rem', fontWeight: 500, color: 'var(--text)', maxWidth: 260,
+    }}>
+      <span style={{ color, flexShrink: 0 }}>{icon}</span>
+      <strong style={{ color: 'var(--text-secondary)', fontWeight: 600, marginRight: 2 }}>{label}</strong>
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</span>
+    </span>
+  );
+
+  const SectionHeader = ({ title, subtitle }: { title: string; subtitle?: string }) => (
+    <div style={{ marginBottom: '0.75rem' }}>
+      <h2 style={{ margin: 0, fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)' }}>
+        {title}
+      </h2>
+      {subtitle && <p style={{ margin: '0.2rem 0 0', fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>{subtitle}</p>}
+    </div>
+  );
+
+  const PanelCard = ({ title, children, accent = 'var(--accent)', style: extraStyle }: {
+    title: string; children: React.ReactNode; accent?: string; style?: React.CSSProperties;
+  }) => (
+    <div style={{
+      background: 'var(--bg-card)', borderRadius: 'var(--radius-md)',
+      padding: '1.1rem 1.25rem', border: '1px solid var(--border)',
+      boxShadow: 'var(--shadow-sm)', ...extraStyle,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: '0.85rem', paddingBottom: '0.65rem', borderBottom: '1px solid var(--border)' }}>
+        <span style={{ width: 3, height: 16, borderRadius: 2, background: accent, flexShrink: 0 }} />
+        <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600, color: 'var(--text)' }}>{title}</h3>
+      </div>
+      {children}
+    </div>
+  );
+
   return (
     <div>
-      <header className="dash-page-header">
-        <p className="welcome-hero__eyebrow dash-page-header__eyebrow">
-          {filtrado ? 'Panel ejecutivo' : 'Inteligencia Operativa en Tiempo Real'}
+
+      {/* ── HEADER ────────────────────────────────────────────────────────── */}
+      <header style={{
+        marginBottom: '1rem', padding: '1.5rem 1.75rem',
+        background: 'linear-gradient(135deg, var(--bg-elevated) 0%, rgba(15,118,110,.05) 100%)',
+        border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)',
+        boxShadow: 'var(--shadow-sm)', position: 'relative', overflow: 'hidden',
+      }}>
+        <div style={{
+          position: 'absolute', top: -50, right: -50, width: 220, height: 220,
+          borderRadius: '50%', background: 'radial-gradient(circle, var(--accent-subtle) 0%, transparent 70%)',
+          pointerEvents: 'none',
+        }} />
+        <p style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--accent)', margin: '0 0 0.55rem' }}>
+          {filtrado ? 'Panel ejecutivo · Centro filtrado' : 'Inteligencia Operativa en Tiempo Real'}
         </p>
-        <h1 className="welcome-hero__title dash-page-header__title">{pageTitle}</h1>
-        <p className="dash-page-header__subtitle">{pageSubtitle}</p>
+        <h1 style={{ margin: 0, fontSize: 'clamp(1.5rem, 3vw, 2.1rem)', fontWeight: 700, letterSpacing: '-0.03em', lineHeight: 1.1, color: 'var(--text)' }}>
+          {pageTitle}
+        </h1>
+        <p style={{ margin: '0.65rem 0 0', fontSize: '0.9375rem', color: 'var(--text-secondary)', lineHeight: 1.7, maxWidth: '54rem' }}>
+          {pageSubtitle}
+        </p>
       </header>
 
-      <div className="dash-meta-strip">
-        <span className="dash-meta-chip dash-meta-chip--file" title={data.filename}>
-          <strong>Archivo</strong> <span className="dash-meta-chip__text">{data.filename}</span>
-        </span>
-        <span className="dash-meta-chip">
-          <strong>Hoja</strong> {data.sheet_used}
-        </span>
-        <span className="dash-meta-chip">
-          <strong>Registros</strong> {data.rows.toLocaleString()}
-        </span>
-        <button type="button" className="btn btn--sm dash-meta-strip__action" onClick={onReset}>
-          Cargar otro archivo
+      {/* ── META STRIP ────────────────────────────────────────────────────── */}
+      <div style={{
+        display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.6rem',
+        padding: '0.65rem 1rem', marginBottom: '1rem',
+        background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)',
+      }}>
+        <MetaChip icon={<IconFile />}  color="var(--accent)" label="Archivo"   value={data.filename} />
+        <MetaChip icon={<IconTable />} color="#0ea5e9"        label="Hoja"      value={data.sheet_used} />
+        <MetaChip icon={<IconRows />}  color="#8b5cf6"        label="Registros" value={data.rows.toLocaleString('es-CO')} />
+        <button type="button" onClick={onReset} style={{
+          marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6,
+          padding: '0.42rem 0.9rem', borderRadius: 999,
+          border: '1px solid var(--border)', background: 'transparent',
+          color: 'var(--text-secondary)', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer', transition: 'all .15s',
+        }}>
+          <IconUpload /> Cargar otro
         </button>
       </div>
 
-      {(maquinasDisponibles.length > 0 || areasDisponibles.length > 0) ? (
-        <div className="dash-global-filters" role="region" aria-label="Filtros de vista del panel">
-          <span className="dash-global-filters__label">Enfocar vista</span>
-          {maquinasDisponibles.length > 0 ? (
-            <label className="dash-global-filters__field">
-              <span>Máquina</span>
-              <select
-                className="btn btn--ghost"
-                value={filtroMaquina}
-                onChange={(e) => setFiltroMaquina(e.target.value)}
-                aria-label="Filtrar gráficos y tabla por máquina"
-              >
-                <option value="">Todas</option>
-                {maquinasDisponibles.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
+      {/* ── FILTROS GLOBALES ──────────────────────────────────────────────── */}
+      {(maquinasDisponibles.length > 0 || areasDisponibles.length > 0) && (
+        <div style={{
+          display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.65rem 1rem',
+          padding: '0.7rem 1rem', marginBottom: '1rem',
+          background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)',
+        }} role="region" aria-label="Filtros de vista del panel">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', flexBasis: '100%' }}>
+            <IconFilter />
+            <span style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Enfocar vista</span>
+          </div>
+          {maquinasDisponibles.length > 0 && (
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Máquina</span>
+              <select className="btn btn--ghost" value={filtroMaquina} onChange={e => setFiltroMaquina(e.target.value)} aria-label="Filtrar por máquina" style={{ minWidth: 180 }}>
+                <option value="">Todas las máquinas</option>
+                {maquinasDisponibles.map(name => <option key={name} value={name}>{name}</option>)}
               </select>
             </label>
-          ) : null}
-          {areasDisponibles.length > 0 ? (
-            <label className="dash-global-filters__field">
-              <span>Área</span>
-              <select
-                className="btn btn--ghost"
-                value={filtroArea}
-                onChange={(e) => setFiltroArea(e.target.value)}
-                aria-label="Filtrar gráfico de horas por área"
-              >
-                <option value="">Todas</option>
-                {areasDisponibles.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
+          )}
+          {areasDisponibles.length > 0 && (
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Área</span>
+              <select className="btn btn--ghost" value={filtroArea} onChange={e => setFiltroArea(e.target.value)} aria-label="Filtrar por área" style={{ minWidth: 160 }}>
+                <option value="">Todas las áreas</option>
+                {areasDisponibles.map(name => <option key={name} value={name}>{name}</option>)}
               </select>
             </label>
-          ) : null}
-          {tieneFiltrosGlobales ? (
-            <button
-              type="button"
-              className="btn btn--sm btn--ghost dash-global-filters__clear"
-              onClick={() => {
-                setFiltroMaquina('');
-                setFiltroArea('');
-              }}
-            >
-              Quitar filtros
+          )}
+          {tieneFiltrosGlobales && (
+            <button type="button" className="btn btn--sm btn--ghost" onClick={() => { setFiltroMaquina(''); setFiltroArea(''); }} style={{ alignSelf: 'flex-end' }}>
+              × Quitar filtros
             </button>
-          ) : null}
-          <p className="dash-global-filters__hint">
-            Máquina: horas por máquina, uso y eficiencia por máquina. Área: solo &quot;Horas por área&quot;. Los KPI y OOE
-            mensual siguen del centro completo.
+          )}
+          <p style={{ flexBasis: '100%', margin: 0, fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+            Máquina afecta: horas por máquina, uso y eficiencia por máquina.
+            Área afecta: solo el gráfico &quot;Horas por área&quot;.
+            Los KPI y OEE mensual reflejan el centro completo.
           </p>
         </div>
-      ) : null}
+      )}
 
-      <section className="dash-kpi-section">
-        <h2 className="dash-section-title">{filtrado ? 'Indicadores del centro' : 'Indicadores clave'}</h2>
+      {/* ── KPIs ──────────────────────────────────────────────────────────── */}
+      <section style={{ marginBottom: '1rem' }}>
+        <SectionHeader
+          title={filtrado ? 'Indicadores del centro' : 'Indicadores clave'}
+          subtitle="Métricas agregadas del período completo cargado"
+        />
         <KPICards resumen={resumen} />
       </section>
 
+      {/* ── GRÁFICOS FILA 1 ───────────────────────────────────────────────── */}
       <div className="dash-two-col">
-        <div className="panel-card panel-card--compact">
-          <h3 className="dash-panel-title">Horas por máquina / centro en esta vista</h3>
+        <PanelCard title="Horas por máquina / centro" accent="#0ea5e9">
           <ProductionChart data={produccionMaquinaVista} />
-        </div>
-        <div className="panel-card panel-card--compact">
-          <h3 className="dash-panel-title">Horas por área</h3>
+        </PanelCard>
+        <PanelCard title="Horas por área" accent="#8b5cf6">
           <HoursAreaChart data={horasAreaVista} />
-        </div>
+        </PanelCard>
       </div>
 
+      {/* ── GRÁFICOS FILA 2 ───────────────────────────────────────────────── */}
       <div className="dash-two-col dash-two-col--spaced">
-        <div className="panel-card panel-card--compact">
-          <h3 className="dash-panel-title">Productivo vs. improductivo</h3>
+        <PanelCard title="Distribución de tiempo" accent="#10b981">
           <ProductivoChart data={productivoImproductivo} />
-        </div>
-        <div className="panel-card panel-card--compact">
-          <h3 className="dash-panel-title">Uso de máquinas</h3>
+        </PanelCard>
+        <PanelCard title="Uso de máquinas" accent="#f59e0b">
           <UsoMaquinasChart data={usoMaquinasVista} />
-        </div>
+        </PanelCard>
       </div>
 
-      <div className="panel-card" style={{ marginTop: '1.25rem' }}>
-        <h3 className="dash-panel-title">Eficiencia por funcionario</h3>
+      {/* ── EFICIENCIAS ───────────────────────────────────────────────────── */}
+      <PanelCard title="Eficiencia por funcionario" accent="#ec4899" style={{ marginTop: '1rem' }}>
         <EfficiencyTable data={eficienciaFuncionarios} />
-      </div>
+      </PanelCard>
 
-      <div className="panel-card" style={{ marginTop: '1.25rem' }}>
-        <h3 className="dash-panel-title">Eficiencia por máquina</h3>
+      <PanelCard title="Eficiencia por máquina" accent="#ef4444" style={{ marginTop: '1rem' }}>
         <EficienciaMaquinaTable data={eficienciaMaquinaVista} />
-      </div>
+      </PanelCard>
 
-      <div className="panel-card" style={{ marginTop: '1.25rem' }}>
-        <h3 className="dash-panel-title">OOE mensual</h3>
-        <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: '0.75rem',
-            alignItems: 'center',
-            marginBottom: '0.85rem',
-          }}
-        >
-          <label style={{ display: 'flex', gap: '0.45rem', alignItems: 'center' }}>
-            <span>Mes:</span>
+      {/* ── OEE MENSUAL ───────────────────────────────────────────────────── */}
+      <PanelCard title="OEE mensual" accent="var(--accent)" style={{ marginTop: '1rem' }}>
+        <div style={{
+          display: 'flex', flexWrap: 'wrap', gap: '0.65rem', alignItems: 'center',
+          marginBottom: '0.85rem', padding: '0.65rem 0.85rem',
+          background: 'var(--bg)', borderRadius: 10, border: '1px solid var(--border)',
+        }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
+            Período:
             <select
-              className="btn btn--ghost"
+              className="btn btn--ghost btn--sm"
               value={periodoSeleccionado}
-              onChange={(e) => setPeriodoSeleccionado(e.target.value)}
-              style={{ minWidth: 180 }}
+              onChange={e => setPeriodoSeleccionado(e.target.value)}
+              style={{ minWidth: 160 }}
             >
-              {periodosDisponibles.map((p) => {
+              {periodosDisponibles.map(p => {
                 const [yy, mm] = p.split('-');
-                const y = Number(yy);
-                const mNum = Number(mm);
-                const date = new Date(y, mNum - 1, 1);
-                const label = Number.isFinite(y) && Number.isFinite(mNum)
-                  ? date.toLocaleDateString('es-CO', { month: 'long', year: 'numeric' })
+                const y = Number(yy), mNum = Number(mm);
+                const lbl = Number.isFinite(y) && Number.isFinite(mNum)
+                  ? new Date(y, mNum - 1, 1).toLocaleDateString('es-CO', { month: 'long', year: 'numeric' })
                   : p;
-                return (
-                  <option key={p} value={p}>
-                    {label}
-                  </option>
-                );
+                return <option key={p} value={p}>{lbl}</option>;
               })}
             </select>
           </label>
 
-          <label style={{ display: 'flex', gap: '0.45rem', alignItems: 'center' }}>
-            <span>Meta OOE (%):</span>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
+            Meta OEE:
             <input
-              type="number"
-              value={metaOoe}
-              min={0}
-              max={100}
-              step={0.5}
-              onChange={(e) => setMetaOoe(Math.min(100, Math.max(0, Number(e.target.value) || 0)))}
-              style={{ width: 90 }}
+              type="number" value={metaOee} min={0} max={100} step={0.5}
+              onChange={e => setMetaOee(Math.min(100, Math.max(0, Number(e.target.value) || 0)))}
+              style={{
+                width: 72, padding: '0.35rem 0.5rem',
+                border: '1px solid var(--border-strong)', borderRadius: 8,
+                background: 'var(--bg-elevated)', color: 'var(--text)',
+                fontSize: '0.8125rem', fontWeight: 600,
+              }}
             />
+            <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>%</span>
           </label>
 
-          {ooePeriodo ? (
-            <span
-              style={{
-                marginLeft: 'auto',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                fontWeight: 600,
-              }}
-            >
-              <span
-                aria-hidden
-                style={{
-                  width: 12,
-                  height: 12,
-                  borderRadius: 999,
-                  background: status.color,
-                  boxShadow: `0 0 8px ${status.color}80`,
-                }}
-              />
-              {periodLabel} · OOE {ooePeriodo.ooe.toFixed(2)}% · {status.text}
-            </span>
-          ) : null}
+          {ooePeriodo && (
+            <div style={{
+              marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8,
+              padding: '0.35rem 0.85rem', borderRadius: 999,
+              background: `${status.color}15`, border: `1px solid ${status.color}35`,
+            }}>
+              <span style={{
+                width: 9, height: 9, borderRadius: '50%',
+                background: status.color, boxShadow: `0 0 6px ${status.color}90`,
+              }} />
+              <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: status.color }}>
+                {periodLabel} · OEE {ooePeriodo.ooe.toFixed(2)}% · {status.text}
+              </span>
+            </div>
+          )}
         </div>
-        <OOEMonthlyTable data={ooeMensual} />
-      </div>
+
+        {/* Pasa ooe_mensual al componente — la prop se llama 'data' internamente */}
+        <OEEMonthlyTable data={ooeMensual} meta={metaOee} />
+      </PanelCard>
+
     </div>
   );
 }
