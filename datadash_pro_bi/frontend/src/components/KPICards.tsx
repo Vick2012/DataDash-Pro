@@ -1,21 +1,45 @@
 import { useMemo } from 'react';
 
-interface Props {
-  resumen: {
-    total_horas: number;
-    total_produccion: number;
-    total_ordenes: number;
-    total_funcionarios: number;
-    total_maquinas: number;
-    ooe_global: number; // campo del backend Rust — no cambiar
-  };
+interface Resumen {
+  total_horas: number;
+  total_produccion: number;
+  total_ordenes: number;
+  total_funcionarios: number;
+  total_maquinas: number;
+  ooe_global: number;
 }
 
-function oeeColor(v: number) {
-  if (v >= 85) return { fg: '#10b981', bg: 'rgba(16,185,129,.1)', label: 'En meta' };
-  if (v >= 70) return { fg: '#f59e0b', bg: 'rgba(245,158,11,.1)', label: 'Riesgo' };
-  return { fg: '#ef4444', bg: 'rgba(239,68,68,.1)', label: 'Bajo' };
+interface Props {
+  resumen: Resumen;
+  resumenGlobal?: Resumen;
+  metaOee?: number;
 }
+
+function oeeColor(v: number, meta: number) {
+  if (v >= meta)      return { fg: '#10b981', bg: 'rgba(16,185,129,.1)', label: 'En meta' };
+  if (v >= meta - 10) return { fg: '#f59e0b', bg: 'rgba(245,158,11,.1)', label: 'Riesgo' };
+  return                     { fg: '#ef4444', bg: 'rgba(239,68,68,.1)',   label: 'Bajo' };
+}
+
+const InfoTip = ({ text }: { text: string }) => (
+  <span className="kpi-tip" tabIndex={0} aria-label={text}>
+    <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden>
+      <circle cx="12" cy="12" r="10" /><path strokeLinecap="round" d="M12 16v-4M12 8h.01" />
+    </svg>
+    <span className="kpi-tip__text" role="tooltip">{text}</span>
+  </span>
+);
+
+const PctChip = ({ pct, positive }: { pct: number; positive: boolean }) => (
+  <span style={{
+    fontSize: '0.62rem', fontWeight: 700,
+    color: positive ? '#10b981' : '#ef4444',
+    background: positive ? 'rgba(16,185,129,.12)' : 'rgba(239,68,68,.12)',
+    padding: '1px 6px', borderRadius: 4, whiteSpace: 'nowrap',
+  }}>
+    {positive ? '↑' : '↓'} {Math.abs(pct).toFixed(1)}% vs. global
+  </span>
+);
 
 const icons = {
   horas: (
@@ -55,10 +79,21 @@ const icons = {
   ),
 };
 
-export default function KPICards({ resumen }: Props) {
-  // Fallback a 0 por si el backend envía undefined en algún campo
-  const oee = resumen.ooe_global ?? 0;
-  const oeeStyle = oeeColor(oee);
+const TIPS: Record<string, string> = {
+  horas:        'Suma de horas registradas en el período cargado',
+  produccion:   'Total de unidades producidas (campo "cantidad" del archivo)',
+  ordenes:      'Número de órdenes de producción únicas (OP)',
+  funcionarios: 'Personal activo con registros en el período',
+  maquinas:     'Equipos / centros de máquina con actividad registrada',
+  oee:          'Overall Equipment Effectiveness — horas productivas / horas totales × 100',
+};
+
+export default function KPICards({ resumen, resumenGlobal, metaOee = 85 }: Props) {
+  const oee      = resumen.ooe_global ?? 0;
+  const oeeStyle = oeeColor(oee, metaOee);
+
+  const globalOee = resumenGlobal?.ooe_global ?? null;
+  const oeeDelta  = globalOee !== null ? oee - globalOee : null;
 
   const items = useMemo(() => [
     {
@@ -70,6 +105,8 @@ export default function KPICards({ resumen }: Props) {
       accent: 'var(--accent)',
       accentBg: 'var(--accent-subtle)',
       sub: 'Horas registradas',
+      raw: resumen.total_horas ?? 0,
+      globalRaw: resumenGlobal?.total_horas ?? null,
     },
     {
       key: 'produccion',
@@ -80,6 +117,8 @@ export default function KPICards({ resumen }: Props) {
       accent: '#8b5cf6',
       accentBg: 'rgba(139,92,246,.1)',
       sub: 'Unidades producidas',
+      raw: resumen.total_produccion ?? 0,
+      globalRaw: resumenGlobal?.total_produccion ?? null,
     },
     {
       key: 'ordenes',
@@ -90,6 +129,8 @@ export default function KPICards({ resumen }: Props) {
       accent: '#0ea5e9',
       accentBg: 'rgba(14,165,233,.1)',
       sub: 'Órdenes de producción',
+      raw: resumen.total_ordenes ?? 0,
+      globalRaw: resumenGlobal?.total_ordenes ?? null,
     },
     {
       key: 'funcionarios',
@@ -100,6 +141,8 @@ export default function KPICards({ resumen }: Props) {
       accent: '#f59e0b',
       accentBg: 'rgba(245,158,11,.1)',
       sub: 'Personal activo',
+      raw: resumen.total_funcionarios ?? 0,
+      globalRaw: resumenGlobal?.total_funcionarios ?? null,
     },
     {
       key: 'maquinas',
@@ -110,42 +153,54 @@ export default function KPICards({ resumen }: Props) {
       accent: '#ec4899',
       accentBg: 'rgba(236,72,153,.1)',
       sub: 'Centros / equipos',
+      raw: resumen.total_maquinas ?? 0,
+      globalRaw: resumenGlobal?.total_maquinas ?? null,
     },
-  ], [resumen]);
+  ], [resumen, resumenGlobal]);
 
   return (
     <div style={{
       display: 'grid', gap: '0.65rem',
       gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 10rem), 1fr))',
     }}>
-      {/* Tarjetas KPI estándar */}
-      {items.map(({ key, label, value, unit, icon, accent, accentBg, sub }) => (
-        <div key={key} style={{
-          background: 'var(--bg-card)', borderRadius: '16px',
-          padding: '1rem 1.1rem', border: '1px solid var(--border)',
-          boxShadow: 'var(--shadow-sm)', display: 'flex', flexDirection: 'column', gap: '0.5rem',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>
-              {label}
-            </span>
-            <span style={{ width: 34, height: 34, borderRadius: '10px', background: accentBg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: accent, flexShrink: 0 }}>
-              {icon}
-            </span>
-          </div>
-          <div>
-            <span style={{ fontSize: '1.6rem', fontWeight: 700, letterSpacing: '-0.03em', color: 'var(--text)', lineHeight: 1.1 }}>
-              {value}
-            </span>
-            {unit && (
-              <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-secondary)', marginLeft: '0.2rem' }}>
-                {unit}
+      {items.map(({ key, label, value, unit, icon, accent, accentBg, sub, raw, globalRaw }) => {
+        const pct = (globalRaw !== null && globalRaw > 0)
+          ? ((raw / globalRaw) * 100 - 100)
+          : null;
+        const showChip = pct !== null && resumenGlobal !== undefined;
+
+        return (
+          <div key={key} style={{
+            background: 'var(--bg-card)', borderRadius: '16px',
+            padding: '1rem 1.1rem', border: '1px solid var(--border)',
+            boxShadow: 'var(--shadow-sm)', display: 'flex', flexDirection: 'column', gap: '0.5rem',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>
+                {label}
+                <InfoTip text={TIPS[key] ?? ''} />
               </span>
-            )}
+              <span style={{ width: 34, height: 34, borderRadius: '10px', background: accentBg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: accent, flexShrink: 0 }}>
+                {icon}
+              </span>
+            </div>
+            <div>
+              <span style={{ fontSize: '1.6rem', fontWeight: 700, letterSpacing: '-0.03em', color: 'var(--text)', lineHeight: 1.1 }}>
+                {value}
+              </span>
+              {unit && (
+                <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-secondary)', marginLeft: '0.2rem' }}>
+                  {unit}
+                </span>
+              )}
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{sub}</span>
+              {showChip && <PctChip pct={pct!} positive={pct! >= 0} />}
+            </div>
           </div>
-          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{sub}</span>
-        </div>
-      ))}
+        );
+      })}
 
       {/* Tarjeta OEE especial con gauge */}
       <div style={{
@@ -156,8 +211,9 @@ export default function KPICards({ resumen }: Props) {
         display: 'flex', flexDirection: 'column', gap: '0.5rem',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>
             OEE global
+            <InfoTip text={TIPS.oee} />
           </span>
           <span style={{ width: 34, height: 34, borderRadius: '10px', background: oeeStyle.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: oeeStyle.fg, flexShrink: 0 }}>
             {icons.oee}
@@ -179,14 +235,21 @@ export default function KPICards({ resumen }: Props) {
           }} />
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Eficiencia productiva</span>
-          <span style={{
-            fontSize: '0.68rem', fontWeight: 600, padding: '2px 7px',
-            borderRadius: 4, background: oeeStyle.bg, color: oeeStyle.fg,
-          }}>
-            {oeeStyle.label}
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
+          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+            Meta: {metaOee}%
           </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {oeeDelta !== null && resumenGlobal !== undefined && (
+              <PctChip pct={oeeDelta} positive={oeeDelta >= 0} />
+            )}
+            <span style={{
+              fontSize: '0.68rem', fontWeight: 600, padding: '2px 7px',
+              borderRadius: 4, background: oeeStyle.bg, color: oeeStyle.fg,
+            }}>
+              {oeeStyle.label}
+            </span>
+          </div>
         </div>
       </div>
     </div>

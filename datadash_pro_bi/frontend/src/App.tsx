@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import AppShell from './components/AppShell';
 import UploadZone from './components/UploadZone';
 import Dashboard from './components/Dashboard';
@@ -101,11 +101,26 @@ export default function App() {
 
   const showDevHint = import.meta.env.DEV && !isTauriRuntime();
 
+  const latestPeriodo = useMemo(() => {
+    if (!data) return '';
+    const periods = data.metrics.global.ooe_mensual;
+    if (!periods.length) return '';
+    const last = [...periods].sort((a, b) => b.periodo.localeCompare(a.periodo))[0];
+    const [yy, mm] = last.periodo.split('-');
+    const y = Number(yy), mNum = Number(mm);
+    if (!Number.isFinite(y) || !Number.isFinite(mNum) || mNum < 1 || mNum > 12) return '';
+    return new Date(y, mNum - 1, 1)
+      .toLocaleDateString('es-CO', { month: 'long', year: 'numeric' })
+      .toUpperCase();
+  }, [data]);
+
   // ── Subpaneles del sidebar ──────────────────────────────────
   const sidebarPanel = data != null ? (
     <>
+      <p className="sidebar-section-title">Filtros</p>
       <CentroSelector data={data} value={centroSel} onChange={setCentroSel} />
-      <BoletinPanel productionPath={productionPath} />
+      <p className="sidebar-section-title">Reportes</p>
+      <BoletinPanel productionPath={productionPath} defaultPeriodo={latestPeriodo || undefined} />
     </>
   ) : null;
 
@@ -159,7 +174,8 @@ export default function App() {
         {topBar}
 
         {!data ? (
-          <>
+          <div className="welcome-corp">
+
             {showDevHint && (
               <div className="dev-browser-banner" role="status">
                 <strong>Estás en el navegador (solo vista previa de Vite)</strong>
@@ -169,29 +185,71 @@ export default function App() {
               </div>
             )}
 
-            <header className="welcome-hero">
-              <p className="welcome-hero__eyebrow">Análisis de producción</p>
-              <h1 className="welcome-hero__title">
-                Cargue sus reportes y obtenga indicadores en minutos
-              </h1>
-              <p className="welcome-hero__lead">
-                Compatible con archivos Excel procedentes de flujos tipo Printux: consolidados,
-                minutas y métricas operativas. Sin envío de datos a la nube.
-              </p>
-            </header>
+            {/* ── Hero 2 columnas ── */}
+            <div className="welcome-corp__hero">
 
-            <UploadZone
-              onSuccess={onUploadSuccess}
-              onError={onUploadError}
-              setLoading={setLoading}
-            />
+              {/* Izquierda — branding + descripción + chips */}
+              <div className="welcome-corp__left">
+                <p className="welcome-corp__eyebrow">
+                  <span className="welcome-corp__eyebrow-dot" />
+                  Análisis de producción industrial
+                </p>
+
+                <h1 className="welcome-corp__title">
+                  Inteligencia<br />
+                  <em className="welcome-corp__title-accent">operativa</em><br />
+                  en tiempo real
+                </h1>
+
+                <p className="welcome-corp__desc">
+                  Analice reportes Printux con gráficos ejecutivos, KPIs
+                  automatizados y un asistente de IA completamente local.
+                  Sin envío de datos a la nube, sin configuraciones complejas.
+                </p>
+
+                <div className="welcome-corp__chips">
+                  {[
+                    ['📊', 'KPIs y OEE automático'],
+                    ['📄', 'Boletines PDF / Excel'],
+                    ['🤖', 'Asistente IA local'],
+                    ['🔒', '100% privado'],
+                    ['⚡', 'Sin internet'],
+                  ].map(([icon, label]) => (
+                    <span key={label} className="welcome-corp__chip">
+                      <span aria-hidden>{icon}</span>{label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Derecha — logo animado + upload */}
+              <div className="welcome-corp__right">
+                <div className="welcome-corp__icon-ring">
+                  <img
+                    src="/assets/icono-llm.png"
+                    alt="DataDash Pro BI — Asistente IA"
+                    className="welcome-corp__icon-img"
+                  />
+                </div>
+                <div className="welcome-corp__upload-wrap">
+                  <UploadZone
+                    onSuccess={onUploadSuccess}
+                    onError={onUploadError}
+                    setLoading={setLoading}
+                  />
+                </div>
+              </div>
+
+            </div>
 
             {loading && <ProcessingOverlay />}
 
-            <div className="feature-grid">
+            {/* ── Feature cards ── */}
+            <div className="welcome-corp__features">
               {FEATURES.map(f => <FeatureCard key={f.title} {...f} />)}
             </div>
-          </>
+
+          </div>
         ) : (
           <Dashboard data={data} onReset={onReset} centroSeleccionado={centroSel} />
         )}

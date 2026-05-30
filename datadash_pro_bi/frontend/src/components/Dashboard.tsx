@@ -140,6 +140,19 @@ export default function Dashboard({ data, onReset, centroSeleccionado }: Props) 
     [ooeMensual, periodoSeleccionado],
   );
 
+  const latestOeeRow = useMemo(() => {
+    if (!ooeMensual.length) return null;
+    return [...ooeMensual].sort((a, b) => b.periodo.localeCompare(a.periodo))[0] ?? null;
+  }, [ooeMensual]);
+
+  const latestPeriodLabel = useMemo(() => {
+    if (!latestOeeRow) return '';
+    const [yy, mm] = latestOeeRow.periodo.split('-');
+    const y = Number(yy), mNum = Number(mm);
+    if (!Number.isFinite(y) || !Number.isFinite(mNum)) return latestOeeRow.periodo;
+    return new Date(y, mNum - 1, 1).toLocaleDateString('es-CO', { month: 'long', year: 'numeric' });
+  }, [latestOeeRow]);
+
   const periodLabel = useMemo(() => {
     if (!periodoSeleccionado) return '';
     const [yy, mm] = periodoSeleccionado.split('-');
@@ -288,13 +301,41 @@ export default function Dashboard({ data, onReset, centroSeleccionado }: Props) 
         </div>
       )}
 
+      {/* ── ALERTA OEE ────────────────────────────────────────────────────── */}
+      {latestOeeRow && latestOeeRow.ooe < metaOee && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '0.75rem',
+          padding: '0.7rem 1.1rem', marginBottom: '0.85rem',
+          background: latestOeeRow.ooe < metaOee - 10
+            ? 'rgba(239,68,68,.08)' : 'rgba(245,158,11,.08)',
+          border: `1px solid ${latestOeeRow.ooe < metaOee - 10
+            ? 'rgba(239,68,68,.35)' : 'rgba(245,158,11,.35)'}`,
+          borderRadius: 'var(--radius-md)',
+        }}>
+          <span style={{ fontSize: '1.1rem', flexShrink: 0 }}>
+            {latestOeeRow.ooe < metaOee - 10 ? '🔴' : '🟡'}
+          </span>
+          <span style={{ fontSize: '0.875rem', color: 'var(--text)' }}>
+            OEE de <strong>{latestPeriodLabel}</strong> en{' '}
+            <strong style={{ color: latestOeeRow.ooe < metaOee - 10 ? '#ef4444' : '#f59e0b' }}>
+              {latestOeeRow.ooe.toFixed(1)}%
+            </strong>{' '}
+            — meta configurada: <strong>{metaOee}%</strong>
+          </span>
+        </div>
+      )}
+
       {/* ── KPIs ──────────────────────────────────────────────────────────── */}
       <section style={{ marginBottom: '1rem' }}>
         <SectionHeader
           title={filtrado ? 'Indicadores del centro' : 'Indicadores clave'}
           subtitle="Métricas agregadas del período completo cargado"
         />
-        <KPICards resumen={resumen} />
+        <KPICards
+          resumen={resumen}
+          resumenGlobal={filtrado ? data.metrics.global.resumen : undefined}
+          metaOee={metaOee}
+        />
       </section>
 
       {/* ── GRÁFICOS FILA 1 ───────────────────────────────────────────────── */}

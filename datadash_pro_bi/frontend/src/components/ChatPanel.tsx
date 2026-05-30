@@ -196,10 +196,8 @@ export default function ChatPanel({ data, centroSeleccionado = '' }: Props) {
             <path strokeWidth="2.5" strokeLinecap="round" d="M6 18L18 6M6 6l12 12"/>
           </svg>
         ) : (
-          <svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-              d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15M14.25 3.104c.251.023.501.05.75.082M19.8 15l-1.575 1.55M5 14.5l-1.575 1.55m0 0L5 17.6m-1.575-1.55L5 14.5"/>
-          </svg>
+          <img src="/assets/icono-llm.png" alt="Asistente IA" width={64} height={64}
+            style={{ borderRadius: '50%', objectFit: 'cover', display: 'block' }} />
         )}
         {connected === true && <span className="ai-fab__status" />}
         {unreadDot && <span className="ai-fab__badge" />}
@@ -212,10 +210,8 @@ export default function ChatPanel({ data, centroSeleccionado = '' }: Props) {
         <div className="ai-win__header">
           <div className="ai-win__header-left">
             <div className="ai-win__avatar" aria-hidden>
-              <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                  d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15M14.25 3.104c.251.023.501.05.75.082"/>
-              </svg>
+              <img src="/assets/icono-llm.png" alt="" width={28} height={28}
+                style={{ borderRadius: '50%', objectFit: 'cover', display: 'block' }} />
             </div>
             <div>
               <div className="ai-win__title">Asistente IA</div>
@@ -286,10 +282,8 @@ export default function ChatPanel({ data, centroSeleccionado = '' }: Props) {
           {msgs.length === 0 && (
             <div className="ai-welcome">
               <div className="ai-welcome__icon" aria-hidden>
-                <svg width="28" height="28" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
-                    d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15M14.25 3.104c.251.023.501.05.75.082"/>
-                </svg>
+                <img src="/assets/icono-llm.png" alt="" width={52} height={52}
+                  style={{ borderRadius: '50%', objectFit: 'cover', display: 'block' }} />
               </div>
               <p className="ai-welcome__title">Hola, soy tu asistente de producción</p>
               <p className="ai-welcome__sub">
@@ -318,10 +312,8 @@ export default function ChatPanel({ data, centroSeleccionado = '' }: Props) {
             <div key={msg.id} className={`ai-msg ai-msg--${msg.role}`}>
               {msg.role === 'assistant' && (
                 <div className="ai-msg__avatar" aria-hidden>
-                  <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                      d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15"/>
-                  </svg>
+                  <img src="/assets/icono-llm.png" alt="" width={20} height={20}
+                    style={{ borderRadius: '50%', objectFit: 'cover', display: 'block' }} />
                 </div>
               )}
               <div className="ai-msg__content">

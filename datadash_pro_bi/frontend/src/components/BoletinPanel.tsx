@@ -8,21 +8,26 @@ export interface BoletinFilters {
 
 interface Props {
   productionPath: string | null;
+  defaultPeriodo?: string;
 }
 
 /**
  * Boletín INC en barra lateral (centro + colaborador + periodo).
  * Tauri 2 espera argumentos en camelCase en el invoke.
  */
-export default function BoletinPanel({ productionPath }: Props) {
+export default function BoletinPanel({ productionPath, defaultPeriodo }: Props) {
   const [filters, setFilters] = useState<BoletinFilters | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [centro, setCentro] = useState('');
   const [funcionario, setFuncionario] = useState('');
-  const [periodo, setPeriodo] = useState('FEBRERO 2026');
+  const [periodo, setPeriodo] = useState(defaultPeriodo ?? 'FEBRERO 2026');
   const [stdPorAreaPath, setStdPorAreaPath] = useState<string | null>(null);
   const [doneMsg, setDoneMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (defaultPeriodo) setPeriodo(defaultPeriodo);
+  }, [defaultPeriodo]);
 
   const refreshCentros = useCallback(async () => {
     if (!productionPath?.trim()) {
