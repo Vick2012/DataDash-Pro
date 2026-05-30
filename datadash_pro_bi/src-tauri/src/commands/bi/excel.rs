@@ -82,40 +82,39 @@ fn find_column(cols_lower: &HashMap<String, String>, aliases: &[&str]) -> Option
     None
 }
 
+/// Reglas de clasificación: primer match gana. Cada entrada es (keywords, tipo).
+/// Para agregar una categoría nueva basta con añadir una línea aquí.
+const TIPO_REGLAS: &[(&[&str], &str)] = &[
+    (&["SIN TRABAJO"], "Sin trabajo"),
+    (&["MANTENIMIENTO"], "Mantenimiento"),
+    (
+        &[
+            "ESPERA", "INSUMO", "MATERIAL", "ORGANIZAR",
+            "INICIO TURNO", "FINAL TURNO",
+            "REUNIÓN", "REUNION",
+            "CAPACITACIÓN", "CAPACITACION",
+            "SALUD OCUPACIONAL",
+            "PAUSA", "RECESO",
+            "IMPRODUCTIV",
+        ],
+        "Improductiva",
+    ),
+    (
+        &["ALISTAMIENTO", "MONTAJE", "PLANCHA", "REGISTRO PLANCHA"],
+        "Alistamiento",
+    ),
+];
+
 fn infer_tipo_from_actividad(actividad: &str) -> &'static str {
     let u = actividad.to_uppercase();
-    if u.contains("SIN TRABAJO") {
-        return "Sin trabajo";
+    for (keywords, tipo) in TIPO_REGLAS {
+        if keywords.iter().any(|k| u.contains(k)) {
+            return tipo;
+        }
     }
-    if u.contains("ALISTAMIENTO")
-        || u.contains("MONTAJE")
-        || u.contains("PLANCHA")
-        || u.contains("REGISTRO PLANCHA")
-        || (u.contains("AJUSTE") && (u.contains("COLOR") || u.contains("TINTA")))
-    {
+    // Regla compuesta: AJUSTE + COLOR/TINTA → Alistamiento
+    if u.contains("AJUSTE") && (u.contains("COLOR") || u.contains("TINTA")) {
         return "Alistamiento";
-    }
-    if u.contains("MANTENIMIENTO") {
-        return "Mantenimiento";
-    }
-    if u.contains("ESPERA")
-        || u.contains("INSUMO")
-        || u.contains("MATERIAL")
-        || u.contains("ORGANIZAR")
-        || u.contains("INICIO TURNO")
-        || u.contains("FINAL TURNO")
-        || u.contains("REUNIÓN")
-        || u.contains("REUNION")
-        || u.contains("CAPACITACIÓN")
-        || u.contains("CAPACITACION")
-        || u.contains("SALUD OCUPACIONAL")
-        || u.contains("PAUSA")
-        || u.contains("RECESO")
-    {
-        return "Improductiva";
-    }
-    if u.contains("IMPRODUCTIV") {
-        return "Improductiva";
     }
     "Productiva"
 }
@@ -180,8 +179,8 @@ fn derive_horas_from_hora1_hora2(df: DataFrame) -> Result<DataFrame, String> {
     if df.column("hora1").is_err() || df.column("hora2").is_err() {
         return Ok(df);
     }
-    let s1 = df.column("hora1").unwrap().as_materialized_series();
-    let s2 = df.column("hora2").unwrap().as_materialized_series();
+    let s1 = df.column("hora1").map_err(|e| e.to_string())?.as_materialized_series();
+    let s2 = df.column("hora2").map_err(|e| e.to_string())?.as_materialized_series();
     let ca1 = s1.str().map_err(|e| e.to_string())?;
     let ca2 = s2.str().map_err(|e| e.to_string())?;
     let n = ca1.len();

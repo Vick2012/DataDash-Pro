@@ -1,12 +1,26 @@
-//! Módulo LLM — Integración con Ollama (localhost:11434)
-//! Comandos Tauri: check_llm_availability, query_llm, list_llm_models
+//! Módulo LLM — Integración con Ollama
+//! Comandos Tauri: check_llm_availability, query_llm, list_llm_models,
+//!                 get_ollama_url, save_chat_history, load_chat_history
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::fs;
 use std::time::Duration;
+use tauri::Manager;
 
-const OLLAMA_BASE: &str = "http://localhost:11434";
+const OLLAMA_DEFAULT: &str = "http://localhost:11434";
 const TIMEOUT_SECS: u64 = 90;
+
+/// Lee la URL de Ollama desde la variable de entorno OLLAMA_HOST; si no existe usa localhost.
+fn ollama_base() -> String {
+    std::env::var("OLLAMA_HOST").unwrap_or_else(|_| OLLAMA_DEFAULT.to_string())
+}
+
+/// Expone la URL de Ollama al frontend para que no la tenga hardcodeada.
+#[tauri::command]
+pub fn get_ollama_url() -> String {
+    ollama_base()
+}
 
 // ── Modelos preferidos en orden de prioridad (menor a mayor consumo de RAM) ──
 const PREFERRED_MODELS: &[(&str, u64)] = &[
@@ -117,7 +131,7 @@ pub async fn check_llm_availability() -> Result<String, String> {
     let client = make_client()?;
 
     let result = client
-        .get(format!("{OLLAMA_BASE}/api/tags"))
+        .get(format!("{}/api/tags", ollama_base()))
         .send()
         .await;
 
@@ -198,13 +212,14 @@ pub async fn query_llm(
     };
 
     let resp = client
-        .post(format!("{OLLAMA_BASE}/api/generate"))
+        .post(format!("{}/api/generate", ollama_base()))
         .json(&body)
         .send()
         .await
         .map_err(|e| {
             format!(
-                "No se pudo conectar con Ollama. Verifique que esté ejecutándose en localhost:11434. Error: {e}"
+                "No se pudo conectar con Ollama en {}. Verifique que esté ejecutándose. Error: {e}",
+                ollama_base()
             )
         })?;
 
@@ -228,4 +243,43 @@ pub async fn query_llm(
     };
 
     serde_json::to_string(&answer).map_err(|e| e.to_string())
+}
+
+// ── Historial de conversaciones ───────────────────────────────────────────────
+
+const HISTORY_FILE: &str = "chat_history.json";
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ChatHistoryMessage {
+    pub role: String,
+    pub text: String,
+    pub ts: String,
+}
+
+fn history_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    fs::create_dir_all(&dir).map_err(|e| format!("No se pudo crear directorio de datos: {e}"))?;
+    Ok(dir.join(HISTORY_FILE))
+}
+
+/// Guarda el historial de chat en disco (AppData).
+#[tauri::command]
+pub fn save_chat_history(
+    app: tauri::AppHandle,
+    messages: Vec<ChatHistoryMessage>,
+) -> Result<(), String> {
+    let path = history_path(&app)?;
+    let json = serde_json::to_string(&messages).map_err(|e| e.to_string())?;
+    fs::write(&path, json).map_err(|e| format!("No se pudo guardar historial: {e}"))
+}
+
+/// Carga el historial de chat desde disco. Devuelve lista vacía si no existe.
+#[tauri::command]
+pub fn load_chat_history(app: tauri::AppHandle) -> Result<Vec<ChatHistoryMessage>, String> {
+    let path = history_path(&app)?;
+    if !path.exists() {
+        return Ok(vec![]);
+    }
+    let json = fs::read_to_string(&path).map_err(|e| format!("No se pudo leer historial: {e}"))?;
+    serde_json::from_str(&json).map_err(|e| format!("Historial corrupto, se ignorará: {e}"))
 }

@@ -144,8 +144,8 @@ export default function BoletinPanel({ productionPath }: Props) {
     <div className="sidebar-boletin-panel">
       <h3 className="sidebar-boletin-title">Generar boletín</h3>
       <p className="sidebar-boletin-hint">
-        PDF en apaisado; actividad en varias líneas. Opcional: <strong>STD POR AREA.xlsx</strong> para llenar estándar y
-        eficiencia %. USO DEL TIEMPO según columna Tipo/filtro del Excel.
+        Estándares integrados — la eficiencia se calcula automáticamente.
+        Carga un <strong>STD personalizado</strong> solo si quieres sobreescribir los valores por defecto.
       </p>
 
       {!pathOk ? (
@@ -207,7 +207,7 @@ export default function BoletinPanel({ productionPath }: Props) {
           />
         </div>
         <div className="sidebar-boletin-std-row">
-          <span className="sidebar-boletin-field-label">STD POR AREA (opcional)</span>
+          <span className="sidebar-boletin-field-label">STD personalizado (anula el integrado)</span>
           <div className="sidebar-boletin-std-actions">
             <button
               type="button"

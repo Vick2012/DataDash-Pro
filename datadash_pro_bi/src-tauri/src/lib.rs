@@ -1,8 +1,10 @@
 mod commands;
 
 use commands::bi::{
-    generate_boletin_cmd, generate_boletin_pdf_cmd, list_boletin_filters_cmd, load_std_por_area,
-    upload_excel, upload_excel_bytes, check_llm_availability,list_llm_models, query_llm,
+    check_llm_availability, generate_boletin_cmd, generate_boletin_pdf_cmd,
+    get_ollama_url, list_boletin_filters_cmd, list_llm_models,
+    load_chat_history, load_std_por_area, query_llm,
+    save_chat_history, upload_excel, upload_excel_bytes,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -16,6 +18,12 @@ pub fn run() {
             list_boletin_filters_cmd,
             generate_boletin_cmd,
             generate_boletin_pdf_cmd,
+            get_ollama_url,
+            check_llm_availability,
+            list_llm_models,
+            query_llm,
+            save_chat_history,
+            load_chat_history,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

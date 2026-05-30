@@ -13,7 +13,8 @@ interface Props {
   centroSeleccionado?: string;
 }
 
-const OLLAMA_URL = 'http://localhost:11434';
+const OLLAMA_FALLBACK = 'http://localhost:11434';
+
 const SUGERENCIAS = [
   '¿Cuál es la eficiencia global del período?',
   '¿Qué máquina tiene más horas de uso?',
@@ -42,10 +43,17 @@ function buildCtx(data: MetricsResponse | null, centro: string) {
 }
 
 function buildPrompt(q: string, ctx: string) {
-  return `Eres un asistente experto en análisis de producción industrial. Responde SIEMPRE en español. Usa los datos del contexto. NO inventes valores. Sé conciso y directo, máximo 3 párrafos.
+  return `Eres un asistente experto en análisis de producción industrial. \
+Tienes acceso a datos reales del sistema de producción de la empresa. \
+Responde SIEMPRE en español. \
+Usa los datos del contexto para responder con números y hechos concretos. \
+Si la información solicitada no está en el contexto, dilo claramente. \
+NO inventes valores ni porcentajes. \
+Sé conciso: máximo 4 párrafos.
 
-DATOS:
+=== CONTEXTO DE DATOS ACTUALES ===
 ${ctx}
+=== FIN DEL CONTEXTO ===
 
 Pregunta: ${q}`;
 }
@@ -63,10 +71,33 @@ export default function ChatPanel({ data, centroSeleccionado = '' }: Props) {
   const [input, setInput]         = useState('');
   const [streaming, setStreaming] = useState(false);
   const [showSug, setShowSug]     = useState(true);
-  const abortRef  = useRef<AbortController | null>(null);
-  const endRef    = useRef<HTMLDivElement>(null);
-  const inputRef  = useRef<HTMLTextAreaElement>(null);
-  const idRef     = useRef(0);
+  const abortRef     = useRef<AbortController | null>(null);
+  const endRef       = useRef<HTMLDivElement>(null);
+  const inputRef     = useRef<HTMLTextAreaElement>(null);
+  const idRef        = useRef(0);
+  const ollamaUrlRef = useRef(OLLAMA_FALLBACK);
+
+  useEffect(() => {
+    import('@tauri-apps/api/core').then(({ invoke }) => {
+      invoke<string>('get_ollama_url')
+        .then(url => { ollamaUrlRef.current = url; })
+        .catch(() => {});
+      invoke<Array<{ role: string; text: string; ts: string }>>('load_chat_history')
+        .then(saved => {
+          if (saved.length > 0) {
+            setMsgs(saved.map((m, i) => ({
+              id: i + 1,
+              role: m.role as ChatMessage['role'],
+              text: m.text,
+              ts: new Date(m.ts),
+            })));
+            idRef.current = saved.length;
+            setShowSug(false);
+          }
+        })
+        .catch(() => {});
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -79,7 +110,7 @@ export default function ChatPanel({ data, centroSeleccionado = '' }: Props) {
 
   const check = useCallback(async () => {
     try {
-      const r = await fetch(`${OLLAMA_URL}/api/tags`, { signal: AbortSignal.timeout(3000) });
+      const r = await fetch(`${ollamaUrlRef.current}/api/tags`, { signal: AbortSignal.timeout(3000) });
       if (!r.ok) throw new Error();
       const j = await r.json();
       const list: string[] = (j.models ?? []).map((m: { name: string }) => m.name);
@@ -108,7 +139,7 @@ export default function ChatPanel({ data, centroSeleccionado = '' }: Props) {
     const aid = addMsg('assistant', '', true);
     abortRef.current = new AbortController();
     try {
-      const res = await fetch(`${OLLAMA_URL}/api/generate`, {
+      const res = await fetch(`${ollamaUrlRef.current}/api/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: abortRef.current.signal,
@@ -131,6 +162,14 @@ export default function ChatPanel({ data, centroSeleccionado = '' }: Props) {
         }
       }
       updMsg(aid, full || '(Sin respuesta)', false);
+      setMsgs(current => {
+        import('@tauri-apps/api/core').then(({ invoke }) =>
+          invoke('save_chat_history', {
+            messages: current.map(m => ({ role: m.role, text: m.text, ts: m.ts.toISOString() })),
+          })
+        ).catch(() => {});
+        return current;
+      });
     } catch (e: unknown) {
       const ab = e instanceof Error && e.name === 'AbortError';
       updMsg(aid, ab ? '⏹ Generación detenida.' : `Error: ${String(e)}`, false);
@@ -203,8 +242,12 @@ export default function ChatPanel({ data, centroSeleccionado = '' }: Props) {
               </button>
             )}
             {msgs.length > 0 && (
-              <button className="ai-icon-btn" onClick={() => { setMsgs([]); setShowSug(true); }}
-                title="Nueva conversación" aria-label="Limpiar chat">
+              <button className="ai-icon-btn" onClick={() => {
+                setMsgs([]); setShowSug(true);
+                import('@tauri-apps/api/core').then(({ invoke }) =>
+                  invoke('save_chat_history', { messages: [] })
+                ).catch(() => {});
+              }} title="Nueva conversación" aria-label="Limpiar chat">
                 <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
                     d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>

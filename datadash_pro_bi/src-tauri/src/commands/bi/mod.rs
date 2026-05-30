@@ -1,6 +1,9 @@
 mod llm;
 
-pub use llm::{check_llm_availability, list_llm_models, query_llm};
+pub use llm::{
+    check_llm_availability, get_ollama_url, list_llm_models,
+    load_chat_history, query_llm, save_chat_history,
+};
 
 mod boletin;
 mod excel;
@@ -68,12 +71,21 @@ fn read_optional_std_bytes(path_opt: &Option<String>) -> Result<Option<Vec<u8>>,
     Ok(Some(bytes))
 }
 
+const MAX_FILE_BYTES: usize = 100 * 1024 * 1024; // 100 MB
+
 fn process_bytes(filename: String, bytes: Vec<u8>) -> Result<String, String> {
     if bytes.is_empty() {
-        return Err("El archivo esta vacio".to_string());
+        return Err("El archivo está vacío.".to_string());
     }
     if !extension_ok(&filename) {
         return Err("Solo archivos Excel (.xlsx, .xls, .xlsm)".to_string());
+    }
+    if bytes.len() > MAX_FILE_BYTES {
+        return Err(format!(
+            "El archivo es demasiado grande ({:.1} MB). El límite es {} MB.",
+            bytes.len() as f64 / 1_048_576.0,
+            MAX_FILE_BYTES / 1_048_576
+        ));
     }
 
     let (df, sheet_used) = load_printux_excel(&bytes).map_err(|e| e.to_string())?;

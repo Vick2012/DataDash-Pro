@@ -22,6 +22,10 @@ use std::path::Path;
 
 pub const BOLETIN_SHEET: &str = "Boletín";
 
+/// STD POR AREA embebido en el binario — se usa cuando no se selecciona un archivo externo.
+/// Para actualizar los estándares: reemplaza este archivo y recompila.
+const STD_EMBEBIDO: &[u8] = include_bytes!("STD POR AREA.xlsx");
+
 #[derive(Serialize)]
 pub struct BoletinFilterResponse {
     pub centros: Vec<String>,
@@ -91,6 +95,8 @@ struct ActividadRow {
     estandar: f64,
     /// Porcentaje (0–100+): (prod/hora) / estándar × 100 si hay estándar > 0.
     eficiencia_pct: f64,
+    /// false cuando no se cargó STD POR AREA — se muestra "—" en lugar de "0%"
+    tiene_estandar: bool,
 }
 
 #[derive(Clone, Default)]
@@ -103,6 +109,8 @@ struct UsoTiempo {
     p_prod: f64,
     h_sin: f64,
     p_sin: f64,
+    /// Eficiencia de tiempo: h_prod / total_horas × 100. Significativa sin STD POR AREA.
+    eficiencia_tiempo_pct: f64,
 }
 
 fn bucket_filtro(f: &str) -> u8 {
@@ -321,7 +329,8 @@ fn compute_block_data(
             let estandar = std_index
                 .map(|ix| lookup_std_for_actividad(ix, &nombre, &centro))
                 .unwrap_or(0.0);
-            let eficiencia_pct = if estandar > 0.0 {
+            let tiene_estandar = estandar > 0.0;
+            let eficiencia_pct = if tiene_estandar {
                 (pph / estandar) * 100.0
             } else {
                 0.0
@@ -333,6 +342,7 @@ fn compute_block_data(
                 pph,
                 estandar,
                 eficiencia_pct,
+                tiene_estandar,
             });
         }
         actividades.sort_by(|a, b| b.horas.partial_cmp(&a.horas).unwrap_or(std::cmp::Ordering::Equal));
@@ -382,6 +392,9 @@ fn compute_block_data(
             ut.p_prod /= ps;
             ut.p_sin /= ps;
         }
+        // Eficiencia de tiempo: fracción de tiempo productivo sobre el total.
+        // Útil cuando no se carga STD POR AREA.
+        ut.eficiencia_tiempo_pct = if total > 0.0 { (t_prod / total) * 100.0 } else { 0.0 };
     }
 
     Ok((centro, actividades, ut))
@@ -393,16 +406,25 @@ fn filter_production_for_boletin(
     funcionario: &str,
 ) -> Result<DataFrame, String> {
     let (df, _) = load_printux_excel(production_bytes)?;
-    let fneedle = funcionario.trim();
+    let fneedle = funcionario.trim().to_lowercase();
+    // Filtra filas cuyo funcionario coincide de forma case-insensitive (sin depender de mayúsculas del Excel).
+    let func_col = df
+        .column("funcionario")
+        .map_err(|e| e.to_string())?
+        .as_materialized_series();
+    let func_utf = func_col.str().map_err(|e| e.to_string())?;
+    let func_idx: Vec<u32> = (0..df.height())
+        .filter(|&i| {
+            func_utf
+                .get(i)
+                .map(|s| s.trim().to_lowercase())
+                .unwrap_or_default()
+                == fneedle
+        })
+        .map(|i| i as u32)
+        .collect();
     let mut sub = df
-        .clone()
-        .lazy()
-        .filter(
-            col("funcionario")
-                .cast(DataType::String)
-                .eq(lit(fneedle)),
-        )
-        .collect()
+        .take(&UInt32Chunked::from_vec("i".into(), func_idx))
         .map_err(|e| e.to_string())?;
     if sub.height() == 0 {
         return Err(format!("No hay registros para el colaborador \"{funcionario}\"."));
@@ -420,10 +442,15 @@ fn filter_production_for_boletin(
             .as_materialized_series()
             .str()
             .map_err(|e| e.to_string())?;
+        let needle_norm = centro_needle.trim().to_lowercase();
         let mut rows: Vec<u32> = Vec::new();
         for i in 0..sub.height() {
-            let cv = c_utf.get(i).map(|s| s.trim()).unwrap_or("");
-            if cv == centro_needle {
+            // Comparación case-insensitive y sin espacios extra (incluyendo no-rompibles).
+            let cv = c_utf
+                .get(i)
+                .map(|s| s.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase())
+                .unwrap_or_default();
+            if cv == needle_norm {
                 rows.push(i as u32);
             }
         }
@@ -441,6 +468,7 @@ fn filter_production_for_boletin(
 }
 
 /// Datos ya filtrados (mismos que el Excel) para reutilizar en PDF u otros formatos.
+/// Si `std_bytes` es None usa el STD_EMBEBIDO en el binario; si falla el parseo, continúa sin estándar.
 fn prepare_boletin(
     production_bytes: &[u8],
     centro_filtro: &str,
@@ -448,13 +476,12 @@ fn prepare_boletin(
     std_bytes: Option<&[u8]>,
 ) -> Result<(String, Vec<ActividadRow>, UsoTiempo), String> {
     let sub = filter_production_for_boletin(production_bytes, centro_filtro, funcionario)?;
-    let std_owned = if let Some(b) = std_bytes {
-        Some(build_std_index(b)?)
-    } else {
-        None
-    };
-    let std_ref = std_owned.as_deref();
-    compute_block_data(&sub, centro_filtro, std_ref)
+
+    // Prioridad: STD externo > STD embebido > sin estándar
+    let effective_bytes = std_bytes.unwrap_or(STD_EMBEBIDO);
+    let std_index = build_std_index(effective_bytes).ok();
+
+    compute_block_data(&sub, centro_filtro, std_index.as_deref())
 }
 
 /// Textos fijos del formato tipo INC (periodo, funcionario, centro, EFICIENCIAS, USO DEL TIEMPO, nota pie).
@@ -563,7 +590,11 @@ fn fill_first_block(
             let _ = ws.write_double((r, 4), a.horas);
             let _ = ws.write_double((r, 5), a.pph);
             let _ = ws.write_double((r, 6), a.estandar);
-            let _ = ws.write_double((r, 7), a.eficiencia_pct);
+            if a.tiene_estandar {
+                let _ = ws.write_double((r, 7), a.eficiencia_pct);
+            } else {
+                let _ = ws.write_string((r, 7), "—".to_string());
+            }
         } else {
             let _ = ws.write_string((r, 2), String::new());
             for col in 3..=7 {
@@ -585,6 +616,10 @@ fn fill_first_block(
     let _ = ws.write_double((base + TIME_VAL, 7), uso.p_prod * 100.0);
     let _ = ws.write_double((base + TIME_VAL, 8), uso.h_sin);
     let _ = ws.write_double((base + TIME_VAL, 9), uso.p_sin * 100.0);
+    // Fila adicional: eficiencia de tiempo (% productivo sobre total)
+    ws.write_string((base + TIME_VAL + 1, 2), "Eficiencia (% Tiempo Productivo):".to_string())
+        .map_err(|e| e.to_string())?;
+    let _ = ws.write_double((base + TIME_VAL + 1, 3), uso.eficiencia_tiempo_pct);
 
     Ok(())
 }
@@ -1005,8 +1040,13 @@ pub fn generate_boletin_pdf(
                 "—".to_string()
             };
             layer.use_text(&est_txt, 6.5, Mm(xc + w0 + w1 + w2 + w3 + 0.6), y_mid, &font);
+            let efic_txt = if a.tiene_estandar {
+                fmt_eficiencia_pct(a.eficiencia_pct)
+            } else {
+                "—".to_string()
+            };
             layer.use_text(
-                &fmt_eficiencia_pct(a.eficiencia_pct),
+                &efic_txt,
                 6.5,
                 Mm(xc + w0 + w1 + w2 + w3 + w4 + 0.6),
                 y_mid,
@@ -1098,7 +1138,21 @@ pub fn generate_boletin_pdf(
     layer.use_text(&fmt_hours_es(uso.h_sin), 7.0, Mm(M + cw * 6.0 + 0.8), dyb, &font);
     layer.use_text(&fmt_pct_es_ratio(uso.p_sin), 7.0, Mm(M + cw * 7.0 + 0.8), dyb, &font);
 
-    y += tdata_h + 8.0;
+    y += tdata_h + 3.5;
+    // Eficiencia de tiempo productivo (calculada sin necesidad de STD POR AREA)
+    layer.set_fill_color(black.clone());
+    let efic_label = format!(
+        "Eficiencia (% Tiempo Productivo): {}",
+        fmt_eficiencia_pct(uso.eficiencia_tiempo_pct)
+    );
+    layer.use_text(
+        &efic_label,
+        8.5,
+        Mm(M),
+        pdf_baseline_from_top(PH, y + 3.0),
+        &font_bold,
+    );
+    y += 8.0;
 
     layer.set_fill_color(black.clone());
     for line in wrap_by_chars(PDF_NOTA_LEGAL, 118) {
