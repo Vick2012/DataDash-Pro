@@ -325,6 +325,9 @@ pub fn load_printux_excel(bytes: &[u8]) -> Result<(DataFrame, String), String> {
             if up.starts_with("DASH") || up == "INDEX" || (up == "HOJA1" && sheet_names.len() > 3) {
                 continue;
             }
+            if up == "STD POR AREA" {
+                continue;
+            }
             try_sheets.push(s.clone());
         }
     }
@@ -388,4 +391,29 @@ pub fn load_printux_excel(bytes: &[u8]) -> Result<(DataFrame, String), String> {
     Err(last_err.unwrap_or_else(|| {
         "No se encontró una hoja tabular con minutas (horas + centro u operario).".to_string()
     }))
+}
+
+/// Intenta extraer la hoja "STD POR AREA" del archivo y retorna sus bytes.
+/// Si no existe la hoja o falla, retorna None (se usará el STD embebido).
+pub fn try_extract_std_por_area_sheet(bytes: &[u8]) -> Option<Vec<u8>> {
+    // Intentamos leer el archivo nuevamente para extraer solo la hoja STD POR AREA
+    // Por ahora, retornamos None para usar el STD embebido como fallback
+    // En una versión mejorada, podríamos extraer y re-empaquetar la hoja
+    
+    let cursor = Cursor::new(bytes.to_vec());
+    let mut workbook = match open_workbook_auto_from_rs(cursor) {
+        Ok(w) => w,
+        Err(_) => return None,
+    };
+    
+    let sheet_names: Vec<String> = workbook.sheet_names().to_vec();
+    let std_sheet = sheet_names
+        .iter()
+        .find(|n| n.eq_ignore_ascii_case("STD POR AREA"))?;
+
+    // Si la hoja existe, extraemos los bytes de la sección STD
+    // Para simplificar, reenviamos el archivo completo como fallback
+    // El backend usará la hoja "STD POR AREA" dentro del mismo archivo
+    
+    Some(bytes.to_vec())
 }

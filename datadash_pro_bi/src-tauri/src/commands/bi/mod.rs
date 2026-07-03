@@ -11,7 +11,7 @@ mod metrics;
 mod std_reference;
 
 use boletin::{generate_boletin_pdf, generate_boletin_workbook, list_boletin_filters};
-use excel::load_printux_excel;
+use excel::{load_printux_excel, try_extract_std_por_area_sheet};
 use metrics::{compute_metrics_bundle, MetricsBundle};
 use std_reference::parse_std_por_area_bytes;
 use serde::Serialize;
@@ -94,7 +94,8 @@ fn process_bytes(filename: String, bytes: Vec<u8>) -> Result<String, String> {
         return Err("La hoja esta vacia o no tiene datos validos".to_string());
     }
 
-    let metrics = compute_metrics_bundle(&df, Some(filename.as_str()));
+    let std_bytes = try_extract_std_por_area_sheet(&bytes);
+    let metrics = compute_metrics_bundle(&df, Some(filename.as_str()), std_bytes.as_deref());
 
     let resp = UploadResponse {
         filename,

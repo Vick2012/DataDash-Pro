@@ -7,6 +7,17 @@ interface Item {
   horas: number;
   produccion: number;
   productividad: number;
+  std_promedio: number;
+  eficiencia_pct: number;
+  tiene_std: boolean;
+  h_alist: number;
+  p_alist: number;
+  h_imp: number;
+  p_imp: number;
+  h_prod: number;
+  p_prod: number;
+  h_sin: number;
+  p_sin: number;
 }
 
 interface Props {
@@ -60,6 +71,8 @@ export default function EfficiencyTable({ data }: Props) {
             <th style={{ ...thStyle, textAlign: 'right' }}>Horas</th>
             <th style={{ ...thStyle, textAlign: 'right' }}>Producción</th>
             <th style={{ ...thStyle, textAlign: 'right' }}>Productividad</th>
+            <th style={{ ...thStyle, textAlign: 'right' }}>STD promedio</th>
+            <th style={{ ...thStyle, textAlign: 'right' }}>Eficiencia %</th>
           </tr>
         </thead>
         <tbody>
@@ -78,6 +91,12 @@ export default function EfficiencyTable({ data }: Props) {
                 <td style={{ ...tdStyle, textAlign: 'right' }}>{row.horas.toLocaleString()}</td>
                 <td style={{ ...tdStyle, textAlign: 'right' }}>{row.produccion.toLocaleString()}</td>
                 <td style={{ ...tdStyle, textAlign: 'right' }}>{row.productividad.toFixed(2)}</td>
+                <td style={{ ...tdStyle, textAlign: 'right' }}>
+                  {row.tiene_std ? row.std_promedio.toFixed(2) : '—'}
+                </td>
+                <td style={{ ...tdStyle, textAlign: 'right' }}>
+                  {row.tiene_std ? `${row.eficiencia_pct.toFixed(2)}%` : '—'}
+                </td>
               </tr>
             );
           })}

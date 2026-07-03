@@ -135,7 +135,7 @@ fn bucket_filtro(f: &str) -> u8 {
 
 /// Clasificación para **USO DEL TIEMPO**: combina columna `filtro` con el nombre de `actividad`.
 /// En Printux muchas filas llegan como «Productiva» aunque la actividad sea espera, organización, montaje, etc.
-fn bucket_uso_tiempo_row(filtro: &str, actividad: &str) -> u8 {
+pub(crate) fn bucket_uso_tiempo_row(filtro: &str, actividad: &str) -> u8 {
     let f = filtro.to_uppercase();
     let a = actividad.to_uppercase();
 

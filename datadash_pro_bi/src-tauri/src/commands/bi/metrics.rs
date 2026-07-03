@@ -3,7 +3,11 @@
 use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime};
 use polars::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
+
+use super::{boletin::bucket_uso_tiempo_row, std_reference::parse_std_por_area_bytes};
+
+const STD_EMBEBIDO: &[u8] = include_bytes!("STD POR AREA.xlsx");
 
 fn str_col(df: &DataFrame, name: &str) -> Option<Vec<String>> {
     let s = df.column(name).ok()?.as_materialized_series();
@@ -48,6 +52,17 @@ pub struct EficienciaFuncionario {
     pub horas: f64,
     pub produccion: i64,
     pub productividad: f64,
+    pub std_promedio: f64,
+    pub eficiencia_pct: f64,
+    pub tiene_std: bool,
+    pub h_alist: f64,
+    pub p_alist: f64,
+    pub h_imp: f64,
+    pub p_imp: f64,
+    pub h_prod: f64,
+    pub p_prod: f64,
+    pub h_sin: f64,
+    pub p_sin: f64,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -71,6 +86,81 @@ pub struct OoeMensual {
     pub horas_productivas: f64,
     pub horas_totales: f64,
     pub ooe: f64,
+}
+
+fn norm_std_key(s: &str) -> String {
+    s.to_uppercase()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn lookup_std_for_actividad(index: &[(String, f64)], actividad: &str, centro: &str) -> f64 {
+    let na = norm_std_key(actividad);
+    let nc = norm_std_key(centro);
+    if na.is_empty() {
+        return 0.0;
+    }
+    let mut best_score = 0usize;
+    let mut best_val = 0.0_f64;
+    for (k, val) in index {
+        let mut score = 0usize;
+        if !k.is_empty() && na.contains(k.as_str()) && k.len() >= 6 {
+            score = score.max(k.len());
+        }
+        if !k.is_empty() && k.contains(&na) {
+            score = score.max(na.len());
+        }
+        for w in na.split_whitespace() {
+            if w.len() < 4 {
+                continue;
+            }
+            if k.contains(w) {
+                score += w.len();
+            }
+        }
+        if !nc.is_empty() && k.contains(&nc) {
+            score += 4;
+        }
+        if score > best_score {
+            best_score = score;
+            best_val = *val;
+        }
+    }
+    if best_score >= 6 {
+        best_val
+    } else {
+        0.0
+    }
+}
+
+fn build_std_index(std_bytes: Option<&[u8]>) -> Option<Vec<(String, f64)>> {
+    let bytes = std_bytes?;
+    let resp = parse_std_por_area_bytes(bytes).ok()?;
+    let mut out: Vec<(String, f64)> = Vec::new();
+    for e in resp.entries {
+        let val = e
+            .std_actualizado
+            .or(e.std_actual)
+            .or(e.std_produccion)
+            .filter(|v| *v > 0.0);
+        let Some(val) = val else { continue };
+        let k1 = norm_std_key(&e.centro_actividad);
+        if k1.len() >= 3 {
+            out.push((k1, val));
+        }
+        if !e.proceso.trim().is_empty() {
+            let k2 = norm_std_key(&format!("{} {}", e.proceso.trim(), e.centro_actividad.trim()));
+            if k2.len() >= 4 && !out.iter().any(|(k, _)| k == &k2) {
+                out.push((k2, val));
+            }
+        }
+    }
+    if out.is_empty() {
+        None
+    } else {
+        Some(out)
+    }
 }
 
 fn parse_year_month(fecha: &str) -> Option<(i32, u32)> {
@@ -340,13 +430,56 @@ fn horas_por_area(df: &DataFrame, top_n: usize) -> Vec<HorasArea> {
         .collect()
 }
 
-fn eficiencia_funcionarios(df: &DataFrame, top_n: usize) -> Vec<EficienciaFuncionario> {
+fn eficiencia_funcionarios(df: &DataFrame, top_n: usize, std_index: Option<&[(String, f64)]>) -> Vec<EficienciaFuncionario> {
     if df.column("funcionario").is_err() {
         return vec![];
     }
 
     let has_horas = df.column("horas").is_ok();
     let has_cantidad = df.column("cantidad").is_ok();
+    let has_actividad = df.column("actividad").is_ok();
+    let has_filtro = df.column("filtro").is_ok();
+    let has_centro = df.column("centro").is_ok();
+
+    let mut usage_map: HashMap<String, [f64; 4]> = HashMap::new();
+    if has_filtro && has_horas {
+        let fcol = df.column("filtro").unwrap().as_materialized_series();
+        let hcol = df.column("horas").unwrap().as_materialized_series().f64().unwrap();
+        let act_col = df.column("actividad").ok().and_then(|c| c.as_materialized_series().str().ok());
+        let func_col = df.column("funcionario").unwrap().as_materialized_series().str().ok();
+
+        for i in 0..df.height() {
+            let func = func_col
+                .as_ref()
+                .and_then(|s| s.get(i))
+                .unwrap_or("")
+                .trim_matches('"')
+                .trim()
+                .to_string();
+            if func.is_empty() {
+                continue;
+            }
+            let hrs = hcol.get(i).unwrap_or(0.0);
+            if hrs <= 0.0 {
+                continue;
+            }
+            let filtro = fcol.get(i).unwrap_or_default().to_string();
+            let actividad = act_col
+                .as_ref()
+                .and_then(|s| s.get(i))
+                .unwrap_or("")
+                .to_string();
+            let bucket = bucket_uso_tiempo_row(&filtro, &actividad);
+            let entry = usage_map.entry(func).or_default();
+            match bucket {
+                1 => entry[0] += hrs,
+                2 => entry[1] += hrs,
+                3 => entry[2] += hrs,
+                4 => entry[3] += hrs,
+                _ => entry[1] += hrs,
+            }
+        }
+    }
 
     let agg_horas = if has_horas {
         col("horas").sum().alias("horas")
@@ -384,15 +517,82 @@ fn eficiencia_funcionarios(df: &DataFrame, top_n: usize) -> Vec<EficienciaFuncio
     let cant = f64_col(&out, "cantidad").unwrap_or_default();
     let prod = f64_col(&out, "productividad").unwrap_or_default();
 
+    let mut std_map: HashMap<String, (f64, f64, f64)> = HashMap::new();
+    if std_index.is_some() && has_actividad && has_centro && has_horas && has_cantidad {
+        if let Ok(agg) = df
+            .clone()
+            .lazy()
+            .group_by([col("funcionario"), col("centro"), col("actividad")])
+            .agg([
+                col("cantidad").sum().alias("cantidad"),
+                col("horas").sum().alias("horas"),
+            ])
+            .collect()
+        {
+            let func_col = agg.column("funcionario").ok().and_then(|c| c.as_materialized_series().str().ok());
+            let centro_col = agg.column("centro").ok().and_then(|c| c.as_materialized_series().str().ok());
+            let act_col = agg.column("actividad").ok().and_then(|c| c.as_materialized_series().str().ok());
+            let cantidad_col = agg.column("cantidad").ok().and_then(|c| c.as_materialized_series().f64().ok());
+            let horas_col = agg.column("horas").ok().and_then(|c| c.as_materialized_series().f64().ok());
+            if let (Some(func_col), Some(centro_col), Some(act_col), Some(cantidad_col), Some(horas_col)) = (
+                func_col, centro_col, act_col, cantidad_col, horas_col,
+            ) {
+                for i in 0..agg.height() {
+                    let funcionario = func_col.get(i).unwrap_or_default().trim_matches('"').trim().to_string();
+                    if funcionario.is_empty() {
+                        continue;
+                    }
+                    let centro = centro_col.get(i).unwrap_or_default().trim_matches('"').trim().to_string();
+                    let actividad = act_col.get(i).unwrap_or_default().trim_matches('"').trim().to_string();
+                    let cantidad = cantidad_col.get(i).unwrap_or(0.0);
+                    let horas = horas_col.get(i).unwrap_or(0.0);
+                    if horas <= 0.0 {
+                        continue;
+                    }
+                    let pph = cantidad / horas;
+                    let std = lookup_std_for_actividad(std_index.unwrap(), &actividad, &centro);
+                    if std <= 0.0 {
+                        continue;
+                    }
+                    let entry = std_map.entry(funcionario).or_insert((0.0, 0.0, 0.0));
+                    entry.0 += horas * std;
+                    entry.1 += horas * (pph / std);
+                    entry.2 += horas;
+                }
+            }
+        }
+    }
+
     func.into_iter()
         .zip(hrs.into_iter())
         .zip(cant.into_iter().chain(std::iter::repeat(0.0)))
         .zip(prod.into_iter().chain(std::iter::repeat(0.0)))
-        .map(|(((f, h), c), p)| EficienciaFuncionario {
-            funcionario: f,
-            horas: (h * 100.0).round() / 100.0,
-            produccion: c as i64,
-            productividad: (p * 100.0).round() / 100.0,
+        .map(|(((f, h), c), p)| {
+            let totals = std_map.get(&f).cloned().unwrap_or((0.0, 0.0, 0.0));
+            let std_promedio = if totals.2 > 0.0 { totals.0 / totals.2 } else { 0.0 };
+            let eficiencia_pct = if totals.2 > 0.0 {
+                (totals.1 / totals.2) * 100.0
+            } else {
+                0.0
+            };
+            let usage = usage_map.remove(&f).unwrap_or([0.0, 0.0, 0.0, 0.0]);
+            EficienciaFuncionario {
+                funcionario: f,
+                horas: (h * 100.0).round() / 100.0,
+                produccion: c as i64,
+                productividad: (p * 100.0).round() / 100.0,
+                std_promedio: (std_promedio * 100.0).round() / 100.0,
+                eficiencia_pct: (eficiencia_pct * 100.0).round() / 100.0,
+                tiene_std: totals.2 > 0.0,
+                h_alist: (usage[0] * 100.0).round() / 100.0,
+                p_alist: usage[0] / h.max(1.0),
+                h_imp: (usage[1] * 100.0).round() / 100.0,
+                p_imp: usage[1] / h.max(1.0),
+                h_prod: (usage[2] * 100.0).round() / 100.0,
+                p_prod: usage[2] / h.max(1.0),
+                h_sin: (usage[3] * 100.0).round() / 100.0,
+                p_sin: usage[3] / h.max(1.0),
+            }
         })
         .collect()
 }
@@ -563,13 +763,13 @@ fn filter_df_by_centro(df: &DataFrame, centro: &str) -> Option<DataFrame> {
     }
 }
 
-pub fn compute_all_metrics(df: &DataFrame, file_hint: Option<&str>) -> AllMetrics {
+pub fn compute_all_metrics(df: &DataFrame, file_hint: Option<&str>, std_index: Option<&[(String, f64)]>) -> AllMetrics {
     let (ooe_global, ooe_mensual) = compute_ooe(df, file_hint);
     AllMetrics {
         resumen: kpi_resumen(df, ooe_global),
         produccion_maquina: produccion_por_maquina(df, 15),
         horas_area: horas_por_area(df, 15),
-        eficiencia_funcionarios: eficiencia_funcionarios(df, 20),
+        eficiencia_funcionarios: eficiencia_funcionarios(df, 20, std_index),
         productivo_improductivo: productivo_vs_improductivo(df),
         uso_maquinas: produccion_por_maquina(df, 15),
         eficiencia_maquina: eficiencia_maquina(df, 20),
@@ -577,18 +777,45 @@ pub fn compute_all_metrics(df: &DataFrame, file_hint: Option<&str>) -> AllMetric
     }
 }
 
-pub fn compute_metrics_bundle(df: &DataFrame, file_hint: Option<&str>) -> MetricsBundle {
-    let global = compute_all_metrics(df, file_hint);
-    let centros = list_centros(df);
-    let mut por_centro = BTreeMap::new();
-    for c in &centros {
-        if let Some(sub) = filter_df_by_centro(df, c) {
-            por_centro.insert(c.clone(), compute_all_metrics(&sub, file_hint));
-        }
-    }
+pub fn compute_metrics_bundle(df: &DataFrame, file_hint: Option<&str>, std_bytes: Option<&[u8]>) -> MetricsBundle {
+    let effective_bytes = std_bytes.or(Some(STD_EMBEBIDO));
+    let std_index = build_std_index(effective_bytes);
+    let std_ref = std_index.as_deref();
     MetricsBundle {
-        global,
-        centros,
-        por_centro,
+        global: compute_all_metrics(df, file_hint, std_ref),
+        centros: list_centros(df),
+        por_centro: df
+            .clone()
+            .lazy()
+            .group_by([col("centro")])
+            .agg([col("centro").count().alias("count")])
+            .collect()
+            .ok()
+            .map(|centros| {
+                centros
+                    .column("centro")
+                    .ok()
+                    .and_then(|c| c.as_materialized_series().str().ok())
+                    .map(|strs| {
+                        strs.into_iter()
+                            .filter_map(|v| v.map(|s| s.trim().to_string()))
+                            .filter(|s| !s.is_empty())
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default()
+            })
+            .unwrap_or_default()
+            .into_iter()
+            .fold(BTreeMap::new(), |mut map, centro| {
+                let block = if centro.is_empty() {
+                    compute_all_metrics(df, file_hint, std_ref)
+                } else {
+                    filter_df_by_centro(df, &centro)
+                        .map(|sub| compute_all_metrics(&sub, file_hint, std_ref))
+                        .unwrap_or_else(|| compute_all_metrics(df, file_hint, std_ref))
+                };
+                map.insert(centro, block);
+                map
+            }),
     }
 }

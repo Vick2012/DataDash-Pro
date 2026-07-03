@@ -15,6 +15,17 @@ export interface AllMetrics {
     horas: number;
     produccion: number;
     productividad: number;
+    std_promedio: number;
+    eficiencia_pct: number;
+    tiene_std: boolean;
+    h_alist: number;
+    p_alist: number;
+    h_imp: number;
+    p_imp: number;
+    h_prod: number;
+    p_prod: number;
+    h_sin: number;
+    p_sin: number;
   }[];
   productivo_improductivo: { tipo: string; horas: number }[];
   uso_maquinas: { maquina: string; horas: number }[];
