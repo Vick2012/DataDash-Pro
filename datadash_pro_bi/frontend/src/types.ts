@@ -35,6 +35,8 @@ export interface AllMetrics {
     mantenimiento: number;
     varadas: number;
     total: number;
+    mantenimiento_tipos?: [string, number][];
+    varadas_tipos?: [string, number][];
   }[];
   ooe_mensual: {
     periodo: string;

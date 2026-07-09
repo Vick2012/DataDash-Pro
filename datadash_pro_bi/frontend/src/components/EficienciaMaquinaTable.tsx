@@ -8,10 +8,13 @@ interface Item {
   mantenimiento: number;
   varadas: number;
   total: number;
+  mantenimiento_tipos?: [string, number][];
+  varadas_tipos?: [string, number][];
 }
 
 interface Props {
   data: Item[];
+  tipoFiltro?: string;
 }
 
 const tableStyle: CSSProperties = {
@@ -36,7 +39,7 @@ const tdStyle: CSSProperties = {
   borderBottom: '1px solid var(--border)',
 };
 
-export default function EficienciaMaquinaTable({ data }: Props) {
+export default function EficienciaMaquinaTable({ data, tipoFiltro }: Props) {
   const [selected, setSelected] = useState<string | null>(null);
   const [page, setPage] = useState(0);
 
@@ -78,8 +81,22 @@ export default function EficienciaMaquinaTable({ data }: Props) {
               >
                 <td style={tdStyle}>{row.maquina}</td>
                 <td style={{ ...tdStyle, textAlign: 'right' }}>{row.horas_uso.toLocaleString()}</td>
-                <td style={{ ...tdStyle, textAlign: 'right' }}>{row.mantenimiento.toLocaleString()}</td>
-                <td style={{ ...tdStyle, textAlign: 'right' }}>{row.varadas.toLocaleString()}</td>
+                <td style={{ ...tdStyle, textAlign: 'right' }}>
+                  {(() => {
+                    if (!tipoFiltro) return row.mantenimiento.toLocaleString();
+                    const list = row.mantenimiento_tipos || [];
+                    const v = list.filter(t => t[0] === tipoFiltro).reduce((s, t) => s + (t[1] || 0), 0);
+                    return (v || 0).toLocaleString();
+                  })()}
+                </td>
+                <td style={{ ...tdStyle, textAlign: 'right' }}>
+                  {(() => {
+                    if (!tipoFiltro) return row.varadas.toLocaleString();
+                    const list = row.varadas_tipos || [];
+                    const v = list.filter(t => t[0] === tipoFiltro).reduce((s, t) => s + (t[1] || 0), 0);
+                    return (v || 0).toLocaleString();
+                  })()}
+                </td>
                 <td style={{ ...tdStyle, textAlign: 'right' }}>{row.total.toLocaleString()}</td>
               </tr>
             );

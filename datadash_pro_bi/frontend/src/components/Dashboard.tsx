@@ -71,6 +71,7 @@ export default function Dashboard({ data, onReset, centroSeleccionado }: Props) 
   const [periodoSeleccionado, setPeriodoSeleccionado] = useState('');
   const [filtroMaquina,       setFiltroMaquina]       = useState('');
   const [filtroArea,          setFiltroArea]          = useState('');
+  const [filtroActividadTipo, setFiltroActividadTipo] = useState('');
 
   const periodosDisponibles = useMemo(
     () => ooeMensual.map((x) => x.periodo),
@@ -80,6 +81,7 @@ export default function Dashboard({ data, onReset, centroSeleccionado }: Props) 
   useEffect(() => {
     setFiltroMaquina('');
     setFiltroArea('');
+    setFiltroActividadTipo('');
   }, [centroSeleccionado]);
 
   const maquinasDisponibles = useMemo(() => {
@@ -125,7 +127,20 @@ export default function Dashboard({ data, onReset, centroSeleccionado }: Props) 
     [horasArea, filtroArea],
   );
 
-  const tieneFiltrosGlobales = Boolean(filtroMaquina.trim() || filtroArea.trim());
+  const tieneFiltrosGlobales = Boolean(filtroMaquina.trim() || filtroArea.trim() || filtroActividadTipo.trim());
+
+  const tiposDisponibles = useMemo(() => {
+    const s = new Set<string>();
+    for (const row of eficienciaMaquina) {
+      if ((row as any).mantenimiento_tipos) {
+        for (const t of (row as any).mantenimiento_tipos) s.add(t[0]);
+      }
+      if ((row as any).varadas_tipos) {
+        for (const t of (row as any).varadas_tipos) s.add(t[0]);
+      }
+    }
+    return [...s].sort((a, b) => a.localeCompare(b, 'es'));
+  }, [eficienciaMaquina]);
 
   useEffect(() => {
     if (!periodosDisponibles.length) { setPeriodoSeleccionado(''); return; }
@@ -288,8 +303,17 @@ export default function Dashboard({ data, onReset, centroSeleccionado }: Props) 
               </select>
             </label>
           )}
+          {tiposDisponibles.length > 0 && (
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tipo actividad</span>
+              <select className="btn btn--ghost" value={filtroActividadTipo} onChange={e => setFiltroActividadTipo(e.target.value)} aria-label="Filtrar por tipo de actividad" style={{ minWidth: 220 }}>
+                <option value="">Todos los tipos</option>
+                {tiposDisponibles.map(name => <option key={name} value={name}>{name}</option>)}
+              </select>
+            </label>
+          )}
           {tieneFiltrosGlobales && (
-            <button type="button" className="btn btn--sm btn--ghost" onClick={() => { setFiltroMaquina(''); setFiltroArea(''); }} style={{ alignSelf: 'flex-end' }}>
+            <button type="button" className="btn btn--sm btn--ghost" onClick={() => { setFiltroMaquina(''); setFiltroArea(''); setFiltroActividadTipo(''); }} style={{ alignSelf: 'flex-end' }}>
               × Quitar filtros
             </button>
           )}
@@ -364,7 +388,7 @@ export default function Dashboard({ data, onReset, centroSeleccionado }: Props) 
       </PanelCard>
 
       <PanelCard title="Eficiencia por máquina" accent="#ef4444" style={{ marginTop: '1rem' }}>
-        <EficienciaMaquinaTable data={eficienciaMaquinaVista} />
+        <EficienciaMaquinaTable data={eficienciaMaquinaVista} tipoFiltro={filtroActividadTipo} />
       </PanelCard>
 
       {/* ── OEE MENSUAL ───────────────────────────────────────────────────── */}
