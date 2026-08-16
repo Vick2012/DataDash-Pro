@@ -48,6 +48,10 @@ code,type
 332,Sin asignar
 334,Sin asignar
 335,Sin asignar
+MTTO001,Mantenimiento - Correctivo - Daño Mecánico
+MTTO002,Mantenimiento - Correctivo - Daño Mecánico
+MTTO003,Mantenimiento - Preventivo
+MTTO004,Mantenimiento - Por Operario
 336,Sin asignar
 337,Sin asignar
 340,Sin asignar

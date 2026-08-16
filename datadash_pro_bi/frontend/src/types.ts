@@ -33,10 +33,7 @@ export interface AllMetrics {
     maquina: string;
     horas_uso: number;
     mantenimiento: number;
-    varadas: number;
     total: number;
-    mantenimiento_tipos?: [string, number][];
-    varadas_tipos?: [string, number][];
   }[];
   ooe_mensual: {
     periodo: string;

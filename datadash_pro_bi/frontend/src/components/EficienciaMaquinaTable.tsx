@@ -6,15 +6,11 @@ interface Item {
   maquina: string;
   horas_uso: number;
   mantenimiento: number;
-  varadas: number;
   total: number;
-  mantenimiento_tipos?: [string, number][];
-  varadas_tipos?: [string, number][];
 }
 
 interface Props {
   data: Item[];
-  tipoFiltro?: string;
 }
 
 const tableStyle: CSSProperties = {
@@ -39,7 +35,7 @@ const tdStyle: CSSProperties = {
   borderBottom: '1px solid var(--border)',
 };
 
-export default function EficienciaMaquinaTable({ data, tipoFiltro }: Props) {
+export default function EficienciaMaquinaTable({ data }: Props) {
   const [selected, setSelected] = useState<string | null>(null);
   const [page, setPage] = useState(0);
 
@@ -61,10 +57,9 @@ export default function EficienciaMaquinaTable({ data, tipoFiltro }: Props) {
         <thead>
           <tr style={{ background: 'rgba(30, 41, 59, 0.8)' }}>
             <th style={thStyle}>Máquina</th>
-            <th style={{ ...thStyle, textAlign: 'right' }}>Horas de uso</th>
-            <th style={{ ...thStyle, textAlign: 'right' }}>Mantenimiento</th>
-            <th style={{ ...thStyle, textAlign: 'right' }}>Varadas</th>
-            <th style={{ ...thStyle, textAlign: 'right' }}>Total</th>
+            <th style={{ ...thStyle, textAlign: 'right' }}>Horas de uso (h)</th>
+            <th style={{ ...thStyle, textAlign: 'right' }}>Mantenimiento (h)</th>
+            <th style={{ ...thStyle, textAlign: 'right' }}>Total (h)</th>
           </tr>
         </thead>
         <tbody>
@@ -80,24 +75,9 @@ export default function EficienciaMaquinaTable({ data, tipoFiltro }: Props) {
                 onClick={() => toggleRow(row.maquina)}
               >
                 <td style={tdStyle}>{row.maquina}</td>
-                <td style={{ ...tdStyle, textAlign: 'right' }}>{row.horas_uso.toLocaleString()}</td>
-                <td style={{ ...tdStyle, textAlign: 'right' }}>
-                  {(() => {
-                    if (!tipoFiltro) return row.mantenimiento.toLocaleString();
-                    const list = row.mantenimiento_tipos || [];
-                    const v = list.filter(t => t[0] === tipoFiltro).reduce((s, t) => s + (t[1] || 0), 0);
-                    return (v || 0).toLocaleString();
-                  })()}
-                </td>
-                <td style={{ ...tdStyle, textAlign: 'right' }}>
-                  {(() => {
-                    if (!tipoFiltro) return row.varadas.toLocaleString();
-                    const list = row.varadas_tipos || [];
-                    const v = list.filter(t => t[0] === tipoFiltro).reduce((s, t) => s + (t[1] || 0), 0);
-                    return (v || 0).toLocaleString();
-                  })()}
-                </td>
-                <td style={{ ...tdStyle, textAlign: 'right' }}>{row.total.toLocaleString()}</td>
+                <td style={{ ...tdStyle, textAlign: 'right' }}>{row.horas_uso.toLocaleString()} h</td>
+                <td style={{ ...tdStyle, textAlign: 'right' }}>{row.mantenimiento.toLocaleString()} h</td>
+                <td style={{ ...tdStyle, textAlign: 'right' }}>{row.total.toLocaleString()} h</td>
               </tr>
             );
           })}

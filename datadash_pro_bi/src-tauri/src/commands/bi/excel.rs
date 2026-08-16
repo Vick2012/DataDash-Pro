@@ -48,8 +48,36 @@ const COLUMN_ALIASES: &[(&str, &[&str])] = &[
     ]),
     ("filtro", &["Tipo", "tipo", "FILTRO", "filtro", "Filter"]),
     ("mantenimiento", &["Mantenimiento", "mantenimiento"]),
-    ("varadas", &["Varadas", "varadas", "Paradas"]),
+    ("cod_actividad", &[
+        "Cod. Actividad",
+        "cod. actividad",
+        "CodActividad",
+        "Codigo Actividad",
+        "Código Actividad",
+    ]),
 ];
+
+/// Códigos de actividad que representan mantenimiento de máquina en los consolidados Printux.
+/// Son más confiables que el nombre: el texto de la actividad puede traer variaciones de
+/// escritura (p. ej. "CORRECTIBO" vs "CORRECTIVO") mientras el código se mantiene estable.
+const MTTO_CODES: &[&str] = &["800", "802", "804", "806"];
+
+/// Respaldo por nombre, para archivos que no traigan la columna `Cod. Actividad`.
+const MTTO_KEYWORDS: &[&str] = &[
+    "MTTO PREVENTIVO DE EQUIPO O MAQUINA",
+    "MTTO REALIZADO POR EL OPERARIO",
+    "MTTO CORRECTIVO DAÑO MECANICO",
+    "MTTO CORRECTIVO DAÑO ELECTRICO",
+];
+
+fn is_mantenimiento(cod_actividad: &str, actividad: &str) -> bool {
+    let cod = cod_actividad.trim();
+    if !cod.is_empty() && MTTO_CODES.contains(&cod) {
+        return true;
+    }
+    let u = actividad.trim().to_uppercase();
+    u.starts_with("MTTO") || MTTO_KEYWORDS.iter().any(|k| u.contains(k))
+}
 
 fn data_to_string(d: &Data) -> String {
     // Excel guarda muchas fechas como `Data::DateTime` / ISO; sin esto la columna llega vacía
@@ -307,6 +335,56 @@ fn cast_numeric(df: DataFrame) -> Result<DataFrame, String> {
     Ok(df)
 }
 
+/// Deriva `mantenimiento` a partir de `horas` + `cod_actividad`/`actividad`.
+/// Los consolidados Printux no traen una columna "Mantenimiento": las horas de mantenimiento
+/// están mezcladas en las mismas filas de minutas, marcadas por el código/nombre de actividad
+/// (800, 802, 804, 806 → MTTO PREVENTIVO / CORRECTIVO MECÁNICO / CORRECTIVO ELÉCTRICO / POR EL
+/// OPERARIO). Sin esta columna, `eficiencia_maquina()` en metrics.rs siempre reporta 0.
+fn derive_mantenimiento_from_actividad(df: DataFrame) -> Result<DataFrame, String> {
+    // Si el archivo ya trae una columna "Mantenimiento" explícita, se respeta tal cual.
+    if df.column("mantenimiento").is_ok() {
+        return Ok(df);
+    }
+
+    let Ok(horas_col) = df.column("horas") else {
+        return Ok(df);
+    };
+    let horas = horas_col
+        .as_materialized_series()
+        .f64()
+        .map_err(|e| e.to_string())?
+        .clone();
+
+    let actividad = df
+        .column("actividad")
+        .ok()
+        .map(|c| c.as_materialized_series().clone());
+    let cod_actividad = df
+        .column("cod_actividad")
+        .ok()
+        .map(|c| c.as_materialized_series().clone());
+
+    let n = df.height();
+    let mut mant: Vec<f64> = Vec::with_capacity(n);
+    for i in 0..n {
+        let h = horas.get(i).unwrap_or(0.0);
+        let a = actividad
+            .as_ref()
+            .and_then(|s| s.str().ok())
+            .and_then(|ca| ca.get(i))
+            .unwrap_or("");
+        let c = cod_actividad
+            .as_ref()
+            .and_then(|s| s.str().ok())
+            .and_then(|ca| ca.get(i))
+            .unwrap_or("");
+        mant.push(if is_mantenimiento(c, a) { h } else { 0.0 });
+    }
+
+    let mantenimiento = Column::from(Series::new("mantenimiento".into(), mant));
+    df.hstack(&[mantenimiento]).map_err(|e| e.to_string())
+}
+
 /// Abre el libro y elige la primera hoja prioritaria que tenga `horas` y centro o funcionario.
 pub fn load_printux_excel(bytes: &[u8]) -> Result<(DataFrame, String), String> {
     let cursor = Cursor::new(bytes.to_vec());
@@ -376,6 +454,13 @@ pub fn load_printux_excel(bytes: &[u8]) -> Result<(DataFrame, String), String> {
             }
         };
         let df = match cast_numeric(df) {
+            Ok(d) => d,
+            Err(e) => {
+                last_err = Some(e);
+                continue;
+            }
+        };
+        let df = match derive_mantenimiento_from_actividad(df) {
             Ok(d) => d,
             Err(e) => {
                 last_err = Some(e);

@@ -76,10 +76,7 @@ pub struct EficienciaMaquina {
     pub maquina: String,
     pub horas_uso: f64,
     pub mantenimiento: f64,
-    pub varadas: f64,
     pub total: f64,
-    pub mantenimiento_tipos: Vec<(String, f64)>,
-    pub varadas_tipos: Vec<(String, f64)>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -163,67 +160,6 @@ fn build_std_index(std_bytes: Option<&[u8]>) -> Option<Vec<(String, f64)>> {
     } else {
         Some(out)
     }
-}
-
-fn build_activity_code_map() -> HashMap<String, String> {
-    let mut map: HashMap<String, String> = HashMap::new();
-    // compile-time CSV include so the binary contains the mapping file
-    // Path is relative to this source file: ../../../data/activity_code_map.csv
-    let csv = include_str!("../../../data/activity_code_map.csv");
-    for (i, line) in csv.lines().enumerate() {
-        if i == 0 {
-            // skip header
-            continue;
-        }
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-        let mut parts = line.splitn(2, ',');
-        let code = parts.next().unwrap_or("").trim().trim_matches('"').to_string();
-        let tipo = parts.next().unwrap_or("").trim().trim_matches('"').to_string();
-        if !code.is_empty() {
-            map.insert(code, tipo);
-        }
-    }
-    map
-}
-
-fn actividad_tipo_label(actividad: &str, filtro: &str) -> Option<String> {
-    let a = actividad.to_uppercase();
-    let f = filtro.to_uppercase();
-
-    // Mantenimiento específico
-    if a.contains("MANT") || f.contains("MANT") {
-        if a.contains("CORRECT") || a.contains("CORRECTIVO") || f.contains("CORRECT") {
-            return Some("Mantenimiento - Correctivo".to_string());
-        }
-        if a.contains("PREVENT") || a.contains("PREVENTIVO") || f.contains("PREVENT") {
-            return Some("Mantenimiento - Preventivo".to_string());
-        }
-        return Some("Mantenimiento - Otro".to_string());
-    }
-
-    // Paradas / varadas específicas
-    if a.contains("PARAD") || a.contains("VARAD") || a.contains("PARO") || a.contains("PARADA") || f.contains("PARAD") || f.contains("VARAD") || f.contains("PARO") || f.contains("PARADA") {
-        if a.contains("ELECT") || a.contains("ELÉCTR") || a.contains("ELECTR") || f.contains("ELECT") {
-            return Some("Daño Eléctrico".to_string());
-        }
-        if a.contains("MECAN") || a.contains("MECÁN") || a.contains("FALLA") || f.contains("MECAN") {
-            return Some("Daño Mecánico".to_string());
-        }
-        return Some("Parada / Varada - Otro".to_string());
-    }
-
-    // Fallbacks for daños detectados en actividad
-    if a.contains("ELECT") || a.contains("ELÉCTR") || a.contains("ELECTR") {
-        return Some("Daño Eléctrico".to_string());
-    }
-    if a.contains("MECAN") || a.contains("MECÁN") || a.contains("FALLA") {
-        return Some("Daño Mecánico".to_string());
-    }
-
-    None
 }
 
 fn parse_year_month(fecha: &str) -> Option<(i32, u32)> {
@@ -693,116 +629,8 @@ fn eficiencia_maquina(df: &DataFrame, top_n: usize) -> Vec<EficienciaMaquina> {
     }
 
     let has_mant = df.column("mantenimiento").is_ok();
-    let has_var = df.column("varadas").is_ok();
-    use std::collections::HashMap as Map;
-    let mut mant_by_machine: Map<String, Map<String, f64>> = Map::new();
-    let mut var_by_machine: Map<String, Map<String, f64>> = Map::new();
 
-    // Load code->tipo mapping (compile-time include). If the CSV contains
-    // meaningful labels for activity codes, prefer those over heuristics.
-    let activity_map: HashMap<String, String> = build_activity_code_map();
-
-    // Build detailed tipo breakdowns from the raw rows regardless of whether
-    // explicit `mantenimiento`/`varadas` columns exist. This ensures we return
-    // `*_tipos` even when the Excel already contains those columns.
-    {
-        let act_opt = df
-            .column("actividad")
-            .ok()
-            .and_then(|c| c.as_materialized_series().str().ok());
-        let filt_opt = df
-            .column("filtro")
-            .ok()
-            .and_then(|c| c.as_materialized_series().str().ok());
-        let centro_col = df
-            .column("centro")
-            .ok()
-            .and_then(|c| c.as_materialized_series().str().ok());
-
-        let mant_col = df
-            .column("mantenimiento")
-            .ok()
-            .and_then(|c| c.as_materialized_series().f64().ok());
-        let var_col = df
-            .column("varadas")
-            .ok()
-            .and_then(|c| c.as_materialized_series().f64().ok());
-        let horas_col = df
-            .column("horas")
-            .ok()
-            .and_then(|c| c.as_materialized_series().f64().ok());
-
-        for i in 0..df.height() {
-            let actividad = act_opt.as_ref().and_then(|s| s.get(i)).unwrap_or("");
-            let filtro = filt_opt.as_ref().and_then(|s| s.get(i)).unwrap_or("");
-            let centro = centro_col.as_ref().and_then(|s| s.get(i)).unwrap_or("").trim().to_string();
-            if centro.is_empty() {
-                continue;
-            }
-
-            let tipo = {
-                let code = actividad.trim();
-                if !code.is_empty() {
-                    if let Some(mapped) = activity_map.get(code) {
-                        if !mapped.trim().is_empty() && mapped.to_lowercase() != "sin asignar" {
-                            mapped.clone()
-                        } else {
-                            actividad_tipo_label(actividad, filtro).unwrap_or_else(|| "Otros".to_string())
-                        }
-                    } else {
-                        actividad_tipo_label(actividad, filtro).unwrap_or_else(|| "Otros".to_string())
-                    }
-                } else {
-                    actividad_tipo_label(actividad, filtro).unwrap_or_else(|| "Otros".to_string())
-                }
-            };
-
-            // Prefer explicit column values when present; otherwise fall back to `horas`
-            let mant_h = mant_col.as_ref().map(|c| c.get(i).unwrap_or(0.0)).unwrap_or(0.0);
-            let var_h = var_col.as_ref().map(|c| c.get(i).unwrap_or(0.0)).unwrap_or(0.0);
-            if mant_h > 0.0 {
-                let entry = mant_by_machine.entry(centro.clone()).or_default();
-                *entry.entry(tipo.clone()).or_insert(0.0) += mant_h;
-            } else if mant_col.is_none() {
-                // If no explicit mantenimiento column, check if activity indicates maintenance
-                let up_act = actividad.to_uppercase();
-                let up_filt = filtro.to_uppercase();
-                let is_mant = up_act.contains("MANTENIMIENTO") || up_filt.contains("MANTENIMIENTO");
-                if is_mant {
-                    let h = horas_col.as_ref().map(|c| c.get(i).unwrap_or(0.0)).unwrap_or(0.0);
-                    if h > 0.0 {
-                        let entry = mant_by_machine.entry(centro.clone()).or_default();
-                        *entry.entry(tipo.clone()).or_insert(0.0) += h;
-                    }
-                }
-            }
-
-            if var_h > 0.0 {
-                let entry = var_by_machine.entry(centro.clone()).or_default();
-                *entry.entry(tipo.clone()).or_insert(0.0) += var_h;
-            } else if var_col.is_none() {
-                let up_act = actividad.to_uppercase();
-                let up_filt = filtro.to_uppercase();
-                let is_var = up_act.contains("PARAD")
-                    || up_act.contains("VARAD")
-                    || up_act.contains("PARO")
-                    || up_act.contains("PARADA")
-                    || up_filt.contains("PARAD")
-                    || up_filt.contains("VARAD")
-                    || up_filt.contains("PARO")
-                    || up_filt.contains("PARADA");
-                if is_var {
-                    let h = horas_col.as_ref().map(|c| c.get(i).unwrap_or(0.0)).unwrap_or(0.0);
-                    if h > 0.0 {
-                        let entry = var_by_machine.entry(centro.clone()).or_default();
-                        *entry.entry(tipo.clone()).or_insert(0.0) += h;
-                    }
-                }
-            }
-        }
-    }
-
-    let out = if has_mant && has_var {
+    let out = if has_mant {
         df.clone()
             .lazy()
             .with_column(col("horas").alias("horas_uso"))
@@ -812,123 +640,25 @@ fn eficiencia_maquina(df: &DataFrame, top_n: usize) -> Vec<EficienciaMaquina> {
                     .fill_null(lit(0.0))
                     .alias("mantenimiento"),
             )
-            .with_column(
-                col("varadas")
-                    .cast(DataType::Float64)
-                    .fill_null(lit(0.0))
-                    .alias("varadas"),
-            )
             .group_by([col("centro")])
             .agg([
                 col("horas_uso").sum().alias("horas_uso"),
                 col("mantenimiento").sum().alias("mantenimiento"),
-                col("varadas").sum().alias("varadas"),
             ])
     } else {
-        // Si no hay columnas explícitas, derivamos `mantenimiento` y `varadas`
-        // creando nuevas Series en memoria usando operaciones Rust sobre cadenas.
-        let mut df_clone = df.clone();
-        let n = df_clone.height();
-
-        let act_opt = df_clone
-            .column("actividad")
-            .ok()
-            .and_then(|c| c.as_materialized_series().str().ok());
-        let filt_opt = df_clone
-            .column("filtro")
-            .ok()
-            .and_then(|c| c.as_materialized_series().str().ok());
-        let horas_opt = df_clone
-            .column("horas")
-            .ok()
-            .and_then(|c| c.as_materialized_series().f64().ok());
-
-        let mut mant_vals: Vec<f64> = Vec::with_capacity(n);
-        let mut var_vals: Vec<f64> = Vec::with_capacity(n);
-
-        // Also build detailed breakdowns by type per machine
-        let centro_col = df_clone
-            .column("centro")
-            .ok()
-            .and_then(|c| c.as_materialized_series().str().ok());
-
-        
-        for i in 0..n {
-            let horas = horas_opt.as_ref().map(|h| h.get(i).unwrap_or(0.0)).unwrap_or(0.0);
-            let actividad = act_opt.as_ref().and_then(|s| s.get(i)).unwrap_or("");
-            let filtro = filt_opt.as_ref().and_then(|s| s.get(i)).unwrap_or("");
-            let centro = centro_col.as_ref().and_then(|s| s.get(i)).unwrap_or("");
-            let centro = centro.trim().to_string();
-
-            let up_act = actividad.to_uppercase();
-            let up_filt = filtro.to_uppercase();
-
-            let is_mant = up_act.contains("MANTENIMIENTO") || up_filt.contains("MANTENIMIENTO");
-            let is_var = up_act.contains("PARAD")
-                || up_act.contains("VARAD")
-                || up_act.contains("PARO")
-                || up_act.contains("PARADA")
-                || up_filt.contains("PARAD")
-                || up_filt.contains("VARAD")
-                || up_filt.contains("PARO")
-                || up_filt.contains("PARADA");
-
-            // classify into more specific types
-            let tipo = {
-                let code = actividad.trim();
-                if !code.is_empty() {
-                    if let Some(mapped) = activity_map.get(code) {
-                        if !mapped.trim().is_empty() && mapped.to_lowercase() != "sin asignar" {
-                            Some(mapped.clone())
-                        } else {
-                            actividad_tipo_label(actividad, filtro)
-                        }
-                    } else {
-                        actividad_tipo_label(actividad, filtro)
-                    }
-                } else {
-                    actividad_tipo_label(actividad, filtro)
-                }
-            };
-
-            mant_vals.push(if is_mant { horas } else { 0.0 });
-            var_vals.push(if is_var { horas } else { 0.0 });
-
-            if is_mant {
-                let t = tipo.clone().unwrap_or_else(|| "Mantenimiento - Otro".to_string());
-                let entry = mant_by_machine.entry(centro.clone()).or_default();
-                *entry.entry(t).or_insert(0.0) += horas;
-            }
-            if is_var {
-                let t = tipo.clone().unwrap_or_else(|| "Parada / Varada - Otro".to_string());
-                let entry = var_by_machine.entry(centro.clone()).or_default();
-                *entry.entry(t).or_insert(0.0) += horas;
-            }
-        }
-
-        let mant_series = Series::new("mantenimiento".into(), mant_vals);
-        let var_series = Series::new("varadas".into(), var_vals);
-
-        // Hacemos hstack y luego agrupamos como en el caso con columnas existentes.
-        if let Ok(hs) = df_clone.hstack(&[Column::from(mant_series), Column::from(var_series)]) {
-            df_clone = hs;
-        }
-
-        df_clone
+        df.clone()
             .lazy()
             .with_column(col("horas").alias("horas_uso"))
+            .with_column(lit(0.0).alias("mantenimiento"))
             .group_by([col("centro")])
             .agg([
                 col("horas_uso").sum().alias("horas_uso"),
                 col("mantenimiento").sum().alias("mantenimiento"),
-                col("varadas").sum().alias("varadas"),
             ])
     };
 
     let out = match out
-        .with_column(
-            (col("horas_uso") + col("mantenimiento") + col("varadas")).alias("total"),
-        )
+        .with_column((col("horas_uso") + col("mantenimiento")).alias("total"))
         .sort_by_exprs([col("total")], Default::default())
         .reverse()
         .limit(top_n as u32)
@@ -941,48 +671,17 @@ fn eficiencia_maquina(df: &DataFrame, top_n: usize) -> Vec<EficienciaMaquina> {
     let maq = str_col(&out, "centro").unwrap_or_default();
     let uso = f64_col(&out, "horas_uso").unwrap_or_default();
     let mant = f64_col(&out, "mantenimiento").unwrap_or_default();
-    let var = f64_col(&out, "varadas").unwrap_or_default();
     let total = f64_col(&out, "total").unwrap_or_default();
 
     maq.into_iter()
         .zip(uso.into_iter())
         .zip(mant.into_iter())
-        .zip(var.into_iter())
         .zip(total.into_iter())
-        .map(|((((m, u), ma), v), t)| {
-            let mantenimiento_tipos = mant_by_machine
-                .get(&m)
-                .map(|mp| {
-                    let mut v: Vec<(String, f64)> = mp
-                        .iter()
-                        .map(|(k, hrs)| (k.clone(), (hrs * 100.0).round() / 100.0))
-                        .collect();
-                    v.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-                    v
-                })
-                .unwrap_or_default();
-
-            let varadas_tipos = var_by_machine
-                .get(&m)
-                .map(|mp| {
-                    let mut v: Vec<(String, f64)> = mp
-                        .iter()
-                        .map(|(k, hrs)| (k.clone(), (hrs * 100.0).round() / 100.0))
-                        .collect();
-                    v.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-                    v
-                })
-                .unwrap_or_default();
-
-            EficienciaMaquina {
-                maquina: m,
-                horas_uso: (u * 100.0).round() / 100.0,
-                mantenimiento: (ma * 100.0).round() / 100.0,
-                varadas: (v * 100.0).round() / 100.0,
-                total: (t * 100.0).round() / 100.0,
-                mantenimiento_tipos,
-                varadas_tipos,
-            }
+        .map(|(((m, u), ma), t)| EficienciaMaquina {
+            maquina: m,
+            horas_uso: (u * 100.0).round() / 100.0,
+            mantenimiento: (ma * 100.0).round() / 100.0,
+            total: (t * 100.0).round() / 100.0,
         })
         .collect()
 }
